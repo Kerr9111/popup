@@ -1,7 +1,7 @@
 {
   "name": "@vecdev/popup",
-  "version": "0.1.0",
-  "description": "Firefly popup UI primitive for browser projects.",
+  "version": "0.1.1",
+  "description": "Browser popup with slide gestures, close confirmation, responsive options, and iframe integration.",
   "type": "module",
   "main": "./src/index.js",
   "types": "./index.d.ts",
@@ -25,20 +25,23 @@
     "demo": "node scripts/demo-server.js"
   },
   "dependencies": {
-    "dom-utils-light": "^1.1.1"
-  },
-  "devDependencies": {
+    "dom-utils-light": "^1.1.1",
     "@vecdev/message-bridge": "^0.1.1"
   },
   "keywords": [
     "popup",
     "modal",
     "dialog",
+    "iframe",
+    "swipe",
     "firefly"
   ],
   "author": "vecdev",
   "license": "MIT",
-  "private": true,
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/Kerr9111/popup.git"
