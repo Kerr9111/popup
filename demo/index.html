@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@vecdev/popup demo</title>
+    <link rel="stylesheet" href="../styles/popup.css" />
+    <style>
+      :root {
+        --white: #fff;
+        --redPrimary: #dc2626;
+        color: #172033;
+        font-family: Arial, sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #f4f7fb;
+      }
+
+      .demo {
+        width: min(1040px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 32px 0;
+      }
+
+      .demo__title {
+        margin: 0 0 20px;
+        font-size: 28px;
+      }
+
+      .demo__grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+      }
+
+      .demo button {
+        min-height: 44px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        background: #fff;
+        color: #172033;
+        cursor: pointer;
+        font: inherit;
+      }
+
+      .demo button:hover {
+        border-color: #2563eb;
+      }
+
+      .demo-card {
+        display: grid;
+        gap: 12px;
+        color: #172033;
+      }
+
+      .demo-card h2 {
+        margin: 0;
+        font-size: 22px;
+      }
+
+      .demo-card p {
+        margin: 0;
+        line-height: 1.55;
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "dom-utils-light": "../node_modules/dom-utils-light/DomUtils.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <main class="demo">
+      <h1 class="demo__title">@vecdev/popup demo</h1>
+      <div class="demo__grid">
+        <button type="button" data-demo="center">Center</button>
+        <button type="button" data-demo="bottomToTop">Bottom to top</button>
+        <button type="button" data-demo="topToBottom">Top to bottom</button>
+        <button type="button" data-demo="leftToRight">Left to right</button>
+        <button type="button" data-demo="rightToLeft">Right to left</button>
+        <button type="button" data-demo="confirm">Close confirm</button>
+        <button type="button" data-demo="nested">Nested</button>
+        <button type="button" data-demo="long">Long content</button>
+      </div>
+    </main>
+    <script type="module" src="./demo.js"></script>
+  </body>
+</html>

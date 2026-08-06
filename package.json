@@ -1,0 +1,43 @@
+{
+  "name": "@vecdev/popup",
+  "version": "0.1.0",
+  "description": "Firefly popup UI primitive for browser projects.",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./src/index.js"
+    },
+    "./styles/popup.css": "./styles/popup.css",
+    "./styles/popup.scss": "./styles/popup.scss"
+  },
+  "files": [
+    "src",
+    "styles",
+    "index.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "node --check src/PopupModel.js && node --check src/PopupView.js && node --check src/PopupPresenter.js && node --check src/Popup.js && node --check src/index.js",
+    "demo": "npx serve ."
+  },
+  "dependencies": {
+    "dom-utils-light": "^1.1.1"
+  },
+  "keywords": [
+    "popup",
+    "modal",
+    "dialog",
+    "firefly"
+  ],
+  "author": "vecdev",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/Kerr9111/popup.git"
+  }
+}
