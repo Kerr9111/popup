@@ -22,10 +22,13 @@
   ],
   "scripts": {
     "check": "node --check src/PopupModel.js && node --check src/PopupView.js && node --check src/PopupPresenter.js && node --check src/Popup.js && node --check src/index.js",
-    "demo": "npx serve ."
+    "demo": "node scripts/demo-server.js"
   },
   "dependencies": {
     "dom-utils-light": "^1.1.1"
+  },
+  "devDependencies": {
+    "@vecdev/message-bridge": "^0.1.1"
   },
   "keywords": [
     "popup",

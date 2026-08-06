@@ -1,6 +1,3 @@
-import PopupModel from "./PopupModel.js";
-import PopupView from "./PopupView.js";
-
 const CLOSE_ICON_SYMBOL = `
   <svg aria-hidden="true" width="0" height="0" style="position:absolute;overflow:hidden">
     <symbol id="close" viewBox="0 0 50 50">
@@ -14,9 +11,9 @@ export default class PopupPresenter {
   static zBase = 1000;
   static zStep = 2;
 
-  constructor() {
-    this.model = new PopupModel();
-    this.view = new PopupView();
+  constructor(model, view) {
+    this.model = model;
+    this.view = view;
     this._keyUnsub = null;
 
     this.onTouchMove = this.onTouchMove.bind(this);
@@ -28,17 +25,16 @@ export default class PopupPresenter {
     if (this.view.el.popup) this.view.mountContent(content);
   }
 
-  setCloseBtnIcon(icon) {
-    const text = typeof icon === "string" ? icon.trim() : "";
-    const html = text
-      ? `${CLOSE_ICON_SYMBOL}<svg width="50" height="50"><use href="#close"></use></svg> ${text}`
-      : "";
+  setCloseBtnIcon() {
+    const html = `${CLOSE_ICON_SYMBOL}<svg width="50" height="50"><use href="#close"></use></svg>`;
 
     this.view.setCloseBtnIcon(html);
     if (this.view.el.closeBtn) this.view.el.closeBtn.innerHTML = html;
   }
 
   showPopup(options = {}) {
+    if (this.model.state.isOpen) return;
+
     PopupPresenter.activePopups.push(this);
 
     this.model.setOptions(options);
@@ -51,24 +47,22 @@ export default class PopupPresenter {
       styles: { popup: { zIndex: zPopup }, bg: { zIndex: zBg } },
     });
 
-    const { styles, swipe, data, closeConfirm, lockClose } = this.model.options;
+    const { styles, swipe, closeConfirm, lockClose } = this.model.options;
 
     this.view.createSkeleton(styles);
 
     const onKey = (event) => {
-      if (event.key === "Escape") this.tryClose(this.model.options.closeConfirm);
+      const topPopup = PopupPresenter.activePopups.at(-1);
+      if (event.key === "Escape" && topPopup === this) {
+        this.tryClose(this.model.options.closeConfirm);
+      }
     };
     document.addEventListener("keydown", onKey);
     this._keyUnsub = () => document.removeEventListener("keydown", onKey);
 
     this.view.lockBody(true);
 
-    if (swipe?.direction === "rightToLeft") {
-      const text = data?.closeBtnText ? data.closeBtnText : "";
-      this.setCloseBtnIcon(text);
-    } else {
-      this.setCloseBtnIcon("");
-    }
+    this.setCloseBtnIcon();
 
     const { content } = this.model.state;
     if (content) this.view.mountContent(content);
@@ -89,7 +83,7 @@ export default class PopupPresenter {
     this.model.state.isOpen = true;
   }
 
-  closePopup(closeConfirmOption = null) {
+  closePopup(closeConfirmOption = this.model.options.closeConfirm) {
     this.tryClose(closeConfirmOption);
   }
 
@@ -108,15 +102,15 @@ export default class PopupPresenter {
       title: confirmOpt?.title || "",
       onSaveAndClose: confirmOpt?.saveAndClose
         ? () => {
-            this.view.hideCloseConfirm();
-            this.forceRemove();
-          }
+          this.view.hideCloseConfirm();
+          this.forceRemove();
+        }
         : null,
       onClose: confirmOpt?.close
         ? () => {
-            this.view.hideCloseConfirm();
-            this.forceRemove();
-          }
+          this.view.hideCloseConfirm();
+          this.forceRemove();
+        }
         : null,
       onCancel: confirmOpt?.cancel ? () => this.view.hideCloseConfirm() : null,
     });
@@ -130,21 +124,27 @@ export default class PopupPresenter {
     this._keyUnsub?.();
     this.model.state.isOpen = false;
 
-    PopupPresenter.activePopups = PopupPresenter.activePopups.filter(
-      (popup) => popup !== this,
-    );
+    const popupIndex = PopupPresenter.activePopups.indexOf(this);
+    if (popupIndex !== -1) PopupPresenter.activePopups.splice(popupIndex, 1);
     if (PopupPresenter.activePopups.length === 0) this.view.lockBody(false);
   }
 
   onTouchMove(event, swipe) {
     if (!swipe?.direction) return;
-    if (!["bottomToTop", "topToBottom"].includes(swipe.direction)) return;
 
     const touch = event.touches[0] || event.changedTouches[0];
-    if (this.model.state.startY === 0) this.model.setStartY(touch.clientY);
+    const isHorizontal = ["leftToRight", "rightToLeft"].includes(swipe.direction);
+    let percent;
 
-    const deltaY = touch.clientY - this.model.state.startY;
-    const percent = (deltaY * 100) / window.screen.height;
+    event.preventDefault();
+
+    if (isHorizontal) {
+      if (this.model.state.startX === null) this.model.setStartX(touch.clientX);
+      percent = ((touch.clientX - this.model.state.startX) * 100) / window.innerWidth;
+    } else {
+      if (this.model.state.startY === null) this.model.setStartY(touch.clientY);
+      percent = ((touch.clientY - this.model.state.startY) * 100) / window.innerHeight;
+    }
 
     this.view.el.popup.style.transition = "";
     this.view.el.bg.style.transition = "";
@@ -156,15 +156,21 @@ export default class PopupPresenter {
 
     const touch = event.touches?.[0] || event.changedTouches?.[0];
     if (!touch) return;
-    if (this.model.state.startY === 0) this.model.setStartY(touch.clientY);
+    const isHorizontal = ["leftToRight", "rightToLeft"].includes(swipe.direction);
+    let percent;
 
-    const deltaY = touch.clientY - this.model.state.startY;
-    const percent = (deltaY * 100) / window.screen.height;
+    if (isHorizontal) {
+      if (this.model.state.startX === null) this.model.setStartX(touch.clientX);
+      percent = ((touch.clientX - this.model.state.startX) * 100) / window.innerWidth;
+    } else {
+      if (this.model.state.startY === null) this.model.setStartY(touch.clientY);
+      percent = ((touch.clientY - this.model.state.startY) * 100) / window.innerHeight;
+    }
     const timeout = swipe.timeout || 300;
 
     if (this.model.state.lockClose === true) {
       this.view.resetSwipeFrame(timeout);
-      this.model.resetStartY();
+      this.model.resetTouchStart();
       return;
     }
 
@@ -176,14 +182,20 @@ export default class PopupPresenter {
       case "topToBottom":
         if (percent < -10) allowClose = true;
         break;
+      case "leftToRight":
+        if (percent < -10) allowClose = true;
+        break;
+      case "rightToLeft":
+        if (percent > 10) allowClose = true;
+        break;
       default:
         break;
     }
 
+    this.view.resetSwipeFrame(timeout);
     if (allowClose) this.tryClose(closeConfirm);
-    else this.view.resetSwipeFrame(timeout);
 
-    this.model.resetStartY();
+    this.model.resetTouchStart();
   }
 
   setSmartPopup(options = {}) {
@@ -193,7 +205,7 @@ export default class PopupPresenter {
       btns: [
         {
           tag: "button",
-          classList: ["ui__btn", "ui__btn_red"],
+          classList: ["fly-popup__button", "fly-popup__button--red"],
           props: { textContent: "No" },
           events: { click: () => this.closePopup() },
         },
@@ -201,13 +213,13 @@ export default class PopupPresenter {
     };
     const opts = { ...defaults, ...options };
     const content = document.createElement("div");
-    content.className = "vd__popup__confirm-content";
+    content.className = "fly-popup__confirm";
     content.innerHTML = `
-      <div class="vd__popup__confirm-content__title">${opts.title}</div>
-      <div class="vd__popup__confirm-content__description">${opts.description}</div>
-      <div class="vd__popup__confirm-content__footer"></div>
+      <div class="fly-popup__confirm-title">${opts.title}</div>
+      <div class="fly-popup__confirm-description">${opts.description}</div>
+      <div class="fly-popup__confirm-footer"></div>
     `;
-    const footer = content.querySelector(".vd__popup__confirm-content__footer");
+    const footer = content.querySelector(".fly-popup__confirm-footer");
     opts.btns.forEach((btn) => {
       const el = document.createElement(btn.tag || "button");
       (btn.classList || []).forEach((className) => el.classList.add(className));

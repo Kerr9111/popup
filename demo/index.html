@@ -69,11 +69,19 @@
         margin: 0;
         line-height: 1.55;
       }
+
+      .demo-iframe {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 0;
+      }
     </style>
     <script type="importmap">
       {
         "imports": {
-          "dom-utils-light": "../node_modules/dom-utils-light/DomUtils.js"
+          "dom-utils-light": "../node_modules/dom-utils-light/DomUtils.js",
+          "@vecdev/message-bridge": "../node_modules/@vecdev/message-bridge/src/index.js"
         }
       }
     </script>
@@ -87,6 +95,7 @@
         <button type="button" data-demo="topToBottom">Top to bottom</button>
         <button type="button" data-demo="leftToRight">Left to right</button>
         <button type="button" data-demo="rightToLeft">Right to left</button>
+        <button type="button" data-demo="iframe">Right to left + iframe</button>
         <button type="button" data-demo="confirm">Close confirm</button>
         <button type="button" data-demo="nested">Nested</button>
         <button type="button" data-demo="long">Long content</button>

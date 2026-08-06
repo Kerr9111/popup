@@ -24,10 +24,9 @@ Import JavaScript:
 import Popup from "@vecdev/popup";
 
 const popup = new Popup();
-popup.setContent("<div class='vdPopupTitle'>Hello</div>");
+popup.setContent("<div class='fly-popup__title'>Hello</div>");
 popup.showPopup({
   swipe: { direction: "rightToLeft", timeout: 300 },
-  data: { closeBtnText: "Close" },
 });
 ```
 
@@ -66,9 +65,6 @@ import "@vecdev/popup/styles/popup.css";
     popup: {},
     bg: {}
   },
-  data: {
-    closeBtnText: "Close"
-  },
   responsive: {
     768: { styles: { popup: { width: "80%" } } }
   },
@@ -93,10 +89,12 @@ Install dependencies first:
 npm install
 ```
 
-Then open `demo/index.html` through a local static server. For example:
+Then start the local static server:
 
 ```bash
-npx serve .
+npm run demo
 ```
 
-Open `/demo/` in the browser.
+Open `http://localhost:4173/demo/` in the browser.
+
+Do not open `demo/index.html` through `file://`: browser security rules block ES modules and import maps from file URLs.

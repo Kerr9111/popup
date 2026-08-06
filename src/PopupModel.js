@@ -3,7 +3,8 @@ export default class PopupModel {
     this.state = {
       isOpen: false,
       content: null,
-      startY: 0,
+      startX: null,
+      startY: null,
       onCloseCallback: null,
       lockClose: false,
     };
@@ -58,8 +59,13 @@ export default class PopupModel {
     this.state.startY = y;
   }
 
-  resetStartY() {
-    this.state.startY = 0;
+  setStartX(x) {
+    this.state.startX = x;
+  }
+
+  resetTouchStart() {
+    this.state.startX = null;
+    this.state.startY = null;
   }
 }
 

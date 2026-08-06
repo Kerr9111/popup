@@ -23,10 +23,7 @@ export interface PopupOptions {
     popup?: Partial<CSSStyleDeclaration> | Record<string, string | number>;
     bg?: Partial<CSSStyleDeclaration> | Record<string, string | number>;
   };
-  data?: {
-    closeBtnText?: string;
-    [key: string]: unknown;
-  };
+  data?: Record<string, unknown>;
   responsive?: Record<number, Partial<PopupOptions>>;
   closeConfirm?: {
     title?: string;
@@ -41,7 +38,7 @@ export interface PopupOptions {
 export default class Popup {
   static create(options?: PopupOptions): Popup;
   setContent(content: string | HTMLElement): void;
-  setCloseBtnIcon(icon: string): void;
+  setCloseBtnIcon(): void;
   showPopup(options?: PopupOptions): void;
   closePopup(closeConfirmOption?: PopupOptions["closeConfirm"] | null): void;
   tryClose(confirmOpt?: PopupOptions["closeConfirm"] | null): void;

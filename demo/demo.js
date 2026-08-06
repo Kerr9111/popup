@@ -1,4 +1,7 @@
 import Popup from "../src/index.js";
+import { createParentHub } from "@vecdev/message-bridge";
+
+const IFRAME_CHANNEL = "popup-demo-iframe";
 
 function content(title, text) {
   const wrapper = document.createElement("div");
@@ -11,6 +14,10 @@ function content(title, text) {
   return wrapper;
 }
 
+function attachContentClose(popup) {
+  popup.view.el.popup.querySelector("[data-close]")?.addEventListener("click", () => popup.closePopup());
+}
+
 function show(direction = "") {
   const popup = new Popup();
   popup.setContent(
@@ -21,10 +28,9 @@ function show(direction = "") {
   );
   popup.showPopup({
     swipe: { direction, timeout: 300 },
-    data: { closeBtnText: "Close" },
     styles: direction ? {} : { popup: { maxWidth: "560px" } },
   });
-  popup.view.el.popup.querySelector("[data-close]")?.addEventListener("click", () => popup.closePopup());
+  attachContentClose(popup);
   return popup;
 }
 
@@ -33,13 +39,13 @@ function showConfirm() {
   popup.setContent(content("Confirm", "Click backdrop, close button, or Escape."));
   popup.showPopup({
     swipe: { direction: "rightToLeft", timeout: 300 },
-    data: { closeBtnText: "Close" },
     closeConfirm: {
       title: "Close this popup?",
       close: true,
       cancel: true,
     },
   });
+  attachContentClose(popup);
 }
 
 function showNested() {
@@ -64,6 +70,33 @@ function showLong() {
     swipe: { direction: "bottomToTop", timeout: 300 },
     styles: { popup: { overflow: "auto" } },
   });
+  attachContentClose(popup);
+}
+
+function showIframe() {
+  const popup = new Popup();
+  const iframe = document.createElement("iframe");
+  const hub = createParentHub({ channel: IFRAME_CHANNEL });
+
+  iframe.className = "demo-iframe";
+  iframe.src = "./iframe.html";
+  iframe.title = "Popup iframe demo";
+
+  popup.setContent(iframe);
+  popup.showPopup({
+    swipe: { direction: "rightToLeft", timeout: 300 },
+    callback: () => {
+      unregister();
+      offClose();
+      hub.destroy();
+    },
+  });
+
+  const unregister = hub.register("popup-demo", iframe);
+  const offClose = hub.on("close", (_payload, meta) => {
+    if (meta.source !== iframe.contentWindow) return;
+    popup.closePopup();
+  });
 }
 
 document.addEventListener("click", (event) => {
@@ -73,6 +106,7 @@ document.addEventListener("click", (event) => {
   const demo = button.dataset.demo;
   if (demo === "center") show("");
   else if (demo === "confirm") showConfirm();
+  else if (demo === "iframe") showIframe();
   else if (demo === "nested") showNested();
   else if (demo === "long") showLong();
   else show(demo);

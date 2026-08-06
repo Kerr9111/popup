@@ -21,17 +21,17 @@ export default class PopupView {
   createSkeleton(styles = {}) {
     if (this.el.box) return;
 
-    this.el.box = this.dom.createElement({ classList: ["vdPopupBox"] });
+    this.el.box = this.dom.createElement({ classList: ["fly-popup"] });
     this.el.bg = this.dom.createElement({
-      classList: ["vdPopupBackground"],
+      classList: ["fly-popup__background"],
       styles: styles.bg || {},
     });
     this.el.popup = this.dom.createElement({
-      classList: ["vdPopup"],
+      classList: ["fly-popup__window"],
       styles: styles.popup || {},
     });
-    this.el.thumb = this.dom.createElement({ classList: ["popupThumb"] });
-    this.el.closeBtn = this.dom.createElement({ classList: ["closeSmartBtn"] });
+    this.el.thumb = this.dom.createElement({ classList: ["fly-popup__thumb"] });
+    this.el.closeBtn = this.dom.createElement({ classList: ["fly-popup__close"] });
 
     this.el.box.appendChild(this.el.bg);
     this.el.box.appendChild(this.el.popup);
@@ -61,40 +61,23 @@ export default class PopupView {
     const popup = this.el.popup;
 
     box.classList.remove(
-      "vdPopupBox--bottomToTop",
-      "vdPopupBox--topToBottom",
-      "vdPopupBox--leftToRight",
-      "vdPopupBox--rightToLeft",
+      "fly-popup--bottom-to-top",
+      "fly-popup--top-to-bottom",
+      "fly-popup--left-to-right",
+      "fly-popup--right-to-left",
     );
-    popup.classList.remove(
-      "vdPopup--bottomToTop",
-      "vdPopup--topToBottom",
-      "vdPopup--leftToRight",
-      "vdPopup--rightToLeft",
-    );
-    this.el.thumb.classList.remove(
-      "popupThumb--bottomToTop",
-      "popupThumb--topToBottom",
-    );
-
     switch (direction) {
       case "bottomToTop":
-        box.classList.add("vdPopupBox--bottomToTop");
-        popup.classList.add("vdPopup--bottomToTop");
-        this.el.thumb.classList.add("popupThumb--bottomToTop");
+        box.classList.add("fly-popup--bottom-to-top");
         break;
       case "topToBottom":
-        box.classList.add("vdPopupBox--topToBottom");
-        popup.classList.add("vdPopup--topToBottom");
-        this.el.thumb.classList.add("popupThumb--topToBottom");
+        box.classList.add("fly-popup--top-to-bottom");
         break;
       case "leftToRight":
-        box.classList.add("vdPopupBox--leftToRight");
-        popup.classList.add("vdPopup--leftToRight");
+        box.classList.add("fly-popup--left-to-right");
         break;
       case "rightToLeft":
-        box.classList.add("vdPopupBox--rightToLeft");
-        popup.classList.add("vdPopup--rightToLeft");
+        box.classList.add("fly-popup--right-to-left");
         break;
       default: {
         const rect = popup.getBoundingClientRect();
@@ -125,6 +108,14 @@ export default class PopupView {
       case "topToBottom":
         popup.style.transform = `translate3d(0, ${Math.min(Math.max(percent, -100), 0)}%, 0)`;
         bg.style.opacity = 1 + Math.min(Math.max(percent, -100), 0) / 100 + 0.1;
+        break;
+      case "leftToRight":
+        popup.style.transform = `translate3d(${Math.min(Math.max(percent, -100), 0)}%, 0, 0)`;
+        bg.style.opacity = 1 + Math.min(Math.max(percent, -100), 0) / 100 + 0.1;
+        break;
+      case "rightToLeft":
+        popup.style.transform = `translate3d(${Math.max(Math.min(percent, 100), 0)}%, 0, 0)`;
+        bg.style.opacity = 1 - Math.max(Math.min(percent, 100), 0) / 100 + 0.1;
         break;
       default:
         break;
@@ -185,15 +176,25 @@ export default class PopupView {
   }
 
   showCloseConfirm({ title, onSaveAndClose, onClose, onCancel }) {
+    if (this.el.confirmWrap?.isConnected) return;
+    this.el.confirmWrap = null;
+
+    const popupZIndex = Number.parseInt(window.getComputedStyle(this.el.popup).zIndex, 10);
+    const confirmZIndex = Number.isNaN(popupZIndex) ? 106 : popupZIndex + 1;
+
     const wrap = this.dom.createElement({
-      classList: ["popup__closeConfirm"],
-      children: [{ classList: ["popup__closeConfirm-bg"] }],
+      classList: ["fly-popup__close-confirm"],
+      styles: { zIndex: confirmZIndex },
+      children: [{ classList: ["fly-popup__close-confirm-background"] }],
     });
+    this.dom.setStyles(wrap.firstElementChild, { zIndex: confirmZIndex });
+
     const content = this.dom.createElement({
-      classList: ["popup__closeConfirm-content"],
+      classList: ["fly-popup__close-confirm-content"],
+      styles: { zIndex: confirmZIndex + 1 },
       children: [
         {
-          classList: ["popup__closeConfirm-title"],
+          classList: ["fly-popup__close-confirm-title"],
           props: {
             textContent: title || "Are you sure you want to close this window?",
           },
@@ -211,19 +212,31 @@ export default class PopupView {
 
     if (onSaveAndClose) {
       content.appendChild(
-        createButton("Save", ["ui__btn", "ui__btn--admin-blue", "popup__btn"], onSaveAndClose),
+        createButton(
+          "Save",
+          ["fly-popup__button", "fly-popup__button--blue", "fly-popup__confirm-button"],
+          onSaveAndClose,
+        ),
       );
     }
 
     if (onClose) {
       content.appendChild(
-        createButton("Close", ["ui__btn", "ui__btn--admin-red", "popup__btn"], onClose),
+        createButton(
+          "Close",
+          ["fly-popup__button", "fly-popup__button--red", "fly-popup__confirm-button"],
+          onClose,
+        ),
       );
     }
 
     if (onCancel) {
       content.appendChild(
-        createButton("Back", ["ui__btn", "ui__btn--admin-gray", "popup__btn"], onCancel),
+        createButton(
+          "Back",
+          ["fly-popup__button", "fly-popup__button--gray", "fly-popup__confirm-button"],
+          onCancel,
+        ),
       );
     }
 
@@ -237,9 +250,9 @@ export default class PopupView {
     wrap.onclick = (event) => {
       if (
         event.target === wrap ||
-        event.target.classList.contains("popup__closeConfirm-bg")
+        event.target.classList.contains("fly-popup__close-confirm-background")
       ) {
-        wrap.remove();
+        this.hideCloseConfirm();
       }
     };
 

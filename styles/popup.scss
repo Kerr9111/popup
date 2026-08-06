@@ -1,4 +1,4 @@
-.vdPopupBox {
+.fly-popup {
   display: flex;
   position: fixed;
   z-index: 1300;
@@ -7,306 +7,325 @@
   overflow: hidden;
   width: 100%;
   height: 100%;
-}
 
-.vdPopupBox--bottomToTop {
-  align-items: flex-end;
-  padding-top: 60px;
-}
+  &--bottom-to-top {
+    align-items: flex-end;
+    padding-top: 60px;
 
-.vdPopupBox--topToBottom {
-  align-items: flex-start;
-  padding-bottom: 60px;
-}
+    .fly-popup__window {
+      bottom: 0;
+      transform: translate3d(0, 100%, 0);
+      width: 100%;
+      border-radius: 30px 30px 0 0;
+      max-height: calc(100% - 70px);
+    }
 
-.vdPopupBox--leftToRight {
-  justify-content: flex-start;
-}
+    .fly-popup__thumb {
+      bottom: 100%;
+      right: 0;
+      left: 0;
+      margin: auto auto 8px;
+      width: 40px;
+      height: 3px;
+    }
+  }
 
-.vdPopupBox--rightToLeft .vdPopup {
-  position: fixed;
-  padding: 0;
-}
+  &--top-to-bottom {
+    align-items: flex-start;
+    padding-bottom: 60px;
 
-.vdPopupBox--rightToLeft .vdPopup > div:first-of-type {
-  padding: 20px;
-}
+    .fly-popup__window {
+      top: 0;
+      transform: translate3d(0, -100%, 0);
+      width: 100%;
+      border-radius: 0 0 30px 30px;
+      max-height: calc(100% - 70px);
+    }
 
-.vdPopupTitle {
-  text-align: center;
-  font-size: 2rem;
-  font-weight: 600;
-  margin-bottom: 20px;
-}
+    .fly-popup__thumb {
+      bottom: 100%;
+      right: 0;
+      left: 0;
+      margin: 8px auto auto;
+      width: 40px;
+      height: 3px;
+    }
+  }
 
-.vdPopup {
-  width: 90%;
-  position: absolute;
-  left: 0;
-  right: 0;
-  margin: 0 auto;
-  padding: 20px;
-  background: #fff;
-  z-index: 102;
-  border-radius: 8px;
-  box-sizing: border-box;
-}
+  &--left-to-right {
+    justify-content: flex-start;
 
-.closeSmartBtn {
-  display: flex;
-  position: absolute;
-  right: 15px;
-  top: 15px;
-  cursor: pointer;
-  width: 30px;
-  height: 30px;
-  align-items: center;
-  justify-content: center;
-}
+    .fly-popup__window {
+      top: 0;
+      right: auto;
+      height: 100%;
+      width: 100%;
+      transform: translate3d(-100%, 0, 0);
+      border-radius: 0;
+    }
 
-.closeSmartBtn svg {
-  width: 70%;
-  height: 70%;
-  fill: var(--white, #fff);
-}
+    .fly-popup__thumb {
+      top: 50%;
+      right: 0;
+      width: 24px;
+      height: 56px;
+      transform: translateY(-50%);
+      background-color: transparent;
 
-.vdPopup--bottomToTop {
-  bottom: 0;
-  transform: translate3d(0, 100%, 0);
-  width: 100%;
-  border-radius: 30px 30px 0 0;
-  max-height: calc(100% - 70px);
-}
+      &::before {
+        width: 3px;
+        height: 40px;
+        background-color: #3b82f6;
+      }
+    }
+  }
 
-.vdPopup--topToBottom {
-  top: 0;
-  transform: translate3d(0, -100%, 0);
-  width: 100%;
-  border-radius: 0 0 30px 30px;
-  max-height: calc(100% - 70px);
-}
+  &--right-to-left {
+    .fly-popup__window {
+      position: fixed;
+      top: 0;
+      left: auto;
+      height: 100%;
+      width: 100%;
+      padding: 0;
+      transform: translate3d(100%, 0, 0);
+      border-radius: 0;
 
-.vdPopup--leftToRight {
-  top: 0;
-  right: auto;
-  height: 100%;
-  width: 100%;
-  transform: translate3d(-100%, 0, 0);
-  border-radius: 0;
-}
+      >div:first-of-type {
+        padding: 20px;
+      }
+    }
 
-.vdPopup--rightToLeft {
-  top: 0;
-  left: auto;
-  height: 100%;
-  width: 100%;
-  transform: translate3d(100%, 0, 0);
-  border-radius: 0;
-}
+    .fly-popup__thumb {
+      top: 50%;
+      left: 0;
+      width: 24px;
+      height: 56px;
+      transform: translateY(-50%);
+      background-color: transparent;
 
-.vdPopup--rightToLeft .closeSmartBtn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  right: 100%;
-  top: 30px;
-  background: var(--redPrimary, #d93636);
-  color: #fff;
-  font-size: 1.4rem;
-  text-transform: uppercase;
-  border-bottom-left-radius: 20px;
-  border-top-left-radius: 20px;
-  height: 50px;
-  padding: 0 20px;
-  width: auto;
-}
+      &::before {
+        width: 3px;
+        height: 40px;
+        background-color: #3b82f6;
+      }
+    }
 
-.vdPopup--rightToLeft .closeSmartBtn svg {
-  width: 20px;
-  height: 20px;
-  fill: var(--white, #fff);
-}
+  }
 
-.vdPopupBackground {
-  position: fixed;
-  height: 100%;
-  width: 100%;
-  left: 0;
-  top: 0;
-  background: rgba(0, 0, 0, 0.4);
-  z-index: 101;
-}
+  &__background {
+    position: fixed;
+    height: 100%;
+    width: 100%;
+    left: 0;
+    top: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 101;
+  }
 
-.successTitle {
-  font-size: 2rem;
-  font-weight: 600;
-  text-align: center;
-  margin-bottom: 30px;
-}
+  &__window {
+    width: 90%;
+    position: absolute;
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    padding: 20px;
+    background: #fff;
+    z-index: 102;
+    border-radius: 8px;
+    box-sizing: border-box;
+  }
 
-.popupThumb {
-  position: absolute;
-  opacity: 0.3 !important;
-  border-radius: 1.5px;
-  background-color: #fff;
-}
+  &__title {
+    text-align: center;
+    font-size: 2rem;
+    font-weight: 600;
+    margin-bottom: 20px;
+  }
 
-.popupThumb--bottomToTop {
-  bottom: 100%;
-  right: 0;
-  left: 0;
-  margin: auto auto 8px;
-  width: 40px;
-  height: 3px;
-}
+  &__close {
+    display: flex;
+    position: absolute;
+    right: 15px;
+    top: 15px;
+    cursor: pointer;
+    width: 30px;
+    height: 30px;
+    align-items: center;
+    justify-content: center;
 
-.popupThumb--topToBottom {
-  bottom: 100%;
-  right: 0;
-  left: 0;
-  margin: 8px auto auto;
-  width: 40px;
-  height: 3px;
-}
+    svg {
+      width: 70%;
+      height: 70%;
+      fill: #3b82f6;
+    }
+  }
 
-.popup-loader {
-  width: 100px;
-  padding-top: 120px;
-  margin: auto;
-  text-align: center;
-  line-height: 1;
-  font-size: 1.6rem;
-}
+  &__success-title {
+    font-size: 2rem;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 30px;
+  }
 
-.popup__closeConfirm {
-  position: fixed;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 106;
-}
+  &__thumb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    opacity: 0.3 !important;
+    border-radius: 1.5px;
+    background-color: #fff;
+    touch-action: none;
 
-.popup__closeConfirm .popup__closeConfirm-bg {
-  position: fixed;
-  height: 100%;
-  width: 100%;
-  left: 0;
-  top: 0;
-  background: rgba(0, 0, 0, 0.4);
-  z-index: 106;
-}
+    &::before {
+      content: "";
+      display: block;
+      border-radius: 1.5px;
+    }
+  }
 
-.popup__closeConfirm-content {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  width: min(500px, calc(100vw - 32px));
-  position: absolute;
-  left: 0;
-  right: 0;
-  margin: 0 auto;
-  padding: 20px;
-  background: #fff;
-  z-index: 107;
-  border-radius: 8px;
-  box-sizing: border-box;
-}
+  &__loader {
+    width: 100px;
+    padding-top: 120px;
+    margin: auto;
+    text-align: center;
+    line-height: 1;
+    font-size: 1.6rem;
+  }
 
-.popup__closeConfirm-title {
-  font-size: 2rem;
-  text-align: center;
-  margin-bottom: 30px;
-  width: 100%;
-}
+  &__close-confirm {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 106;
+  }
 
-.popup__btn {
-  width: calc(33% - 10px);
-}
+  &__close-confirm-background {
+    position: fixed;
+    height: 100%;
+    width: 100%;
+    left: 0;
+    top: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 106;
+  }
 
-.vd__popup__confirm-content {
-  text-align: center;
-}
+  &__close-confirm-content {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    width: min(500px, calc(100vw - 32px));
+    position: absolute;
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    padding: 20px;
+    background: #fff;
+    z-index: 107;
+    border-radius: 8px;
+    box-sizing: border-box;
+  }
 
-.vd__popup__confirm-content__title {
-  font-size: 2.2rem;
-  margin-bottom: 10px;
-}
+  &__close-confirm-title {
+    font-size: 2rem;
+    text-align: center;
+    margin-bottom: 30px;
+    width: 100%;
+  }
 
-.vd__popup__confirm-content__description {
-  font-size: 1.5rem;
-}
+  &__confirm-button {
+    width: calc(33% - 10px);
+  }
 
-.vd__popup__confirm-content__footer {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 10px;
-  justify-content: center;
-  margin-top: 20px;
-}
+  &__confirm {
+    text-align: center;
+  }
 
-.ui__btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 40px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: 8px;
-  color: #fff;
-  cursor: pointer;
-  font: inherit;
-  text-decoration: none;
-}
+  &__confirm-title {
+    font-size: 2.2rem;
+    margin-bottom: 10px;
+  }
 
-.ui__btn--admin-blue {
-  background: #2563eb;
-}
+  &__confirm-description {
+    font-size: 1.5rem;
+  }
 
-.ui__btn--admin-red,
-.ui__btn_red {
-  background: #dc2626;
-}
+  &__confirm-footer {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 20px;
+  }
 
-.ui__btn--admin-gray {
-  background: #64748b;
+  &__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: 8px;
+    color: #fff;
+    cursor: pointer;
+    font: inherit;
+    text-decoration: none;
+
+    &--blue {
+      background: #2563eb;
+    }
+
+    &--red {
+      background: #dc2626;
+    }
+
+    &--gray {
+      background: #64748b;
+    }
+  }
 }
 
 @media (min-width: 768px) {
-  .vdPopup {
-    width: 600px;
-  }
+  .fly-popup {
+    &__window {
+      width: 600px;
+    }
 
-  .vdPopup--leftToRight {
-    width: 70%;
-    border-radius: 0 30px 30px 0;
-  }
+    &--left-to-right .fly-popup__window {
+      width: 70%;
+      border-radius: 0 30px 30px 0;
+    }
 
-  .vdPopup--rightToLeft {
-    width: 80%;
-    border-radius: 30px 0 0 30px;
+    &--right-to-left .fly-popup__window {
+      width: 80%;
+      border-radius: 30px 0 0 30px;
+    }
   }
 }
 
 @media (min-width: 1024px) {
-  .vdPopup--leftToRight {
-    width: 50%;
-  }
+  .fly-popup {
+    &--left-to-right .fly-popup__window {
+      width: 50%;
+    }
 
-  .popupThumb {
-    display: none;
+    &__thumb {
+      display: none;
+    }
   }
 }
 
 @media (min-width: 1280px) {
-  .vdPopup--leftToRight {
+  .fly-popup--left-to-right .fly-popup__window {
     width: 40%;
   }
 }
 
 @media (max-width: 767.98px) {
-  .closeSmartBtn {
+  .fly-popup__close {
     width: 40px;
     height: 40px;
   }
