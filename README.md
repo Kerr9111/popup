@@ -110,6 +110,19 @@ The close button, backdrop, Escape key, content controls, and swipe gestures all
 use the same normal close flow. When several popups are open, Escape affects
 only the topmost instance.
 
+### Close Button Visibility
+
+`showCloseBtn` controls only the visual close button. It defaults to `true`.
+When set to `false`, `.fly-popup__close` is not created in the DOM; programmatic
+closing, backdrop click, Escape, iframe bridge events, and swipe gestures keep
+working as configured.
+
+```js
+popup.showPopup({
+  showCloseBtn: false,
+});
+```
+
 ## Close Confirmation
 
 ```js
@@ -266,6 +279,7 @@ popup.showPopup({
   responsive: {
     768: { styles: { popup: { width: "80%" } } }
   },
+  showCloseBtn: true,
   closeConfirm: {
     title: "Close without saving?",
     close: true,

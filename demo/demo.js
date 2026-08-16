@@ -73,6 +73,21 @@ function showLong() {
   attachContentClose(popup);
 }
 
+function showWithoutCloseButton() {
+  const popup = new Popup();
+  popup.setContent(
+    content(
+      "Without close button",
+      "Use this content button, backdrop, Escape, or swipe to close.",
+    ),
+  );
+  popup.showPopup({
+    swipe: { direction: "bottomToTop", timeout: 300 },
+    showCloseBtn: false,
+  });
+  attachContentClose(popup);
+}
+
 function showIframe() {
   const popup = new Popup();
   const iframe = document.createElement("iframe");
@@ -109,5 +124,6 @@ document.addEventListener("click", (event) => {
   else if (demo === "iframe") showIframe();
   else if (demo === "nested") showNested();
   else if (demo === "long") showLong();
+  else if (demo === "withoutCloseButton") showWithoutCloseButton();
   else show(demo);
 });

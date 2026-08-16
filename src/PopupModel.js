@@ -14,6 +14,7 @@ export default class PopupModel {
       styles: { popup: {}, bg: {} },
       data: {},
       responsive: null,
+      showCloseBtn: true,
       closeConfirm: {
         title: "",
         close: false,

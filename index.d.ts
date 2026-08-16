@@ -25,6 +25,7 @@ export interface PopupOptions {
   };
   data?: Record<string, unknown>;
   responsive?: Record<number, Partial<PopupOptions>>;
+  showCloseBtn?: boolean;
   closeConfirm?: {
     title?: string;
     close?: boolean;

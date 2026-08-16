@@ -18,7 +18,7 @@ export default class PopupView {
     };
   }
 
-  createSkeleton(styles = {}) {
+  createSkeleton(styles = {}, showCloseBtn = true) {
     if (this.el.box) return;
 
     this.el.box = this.dom.createElement({ classList: ["fly-popup"] });
@@ -31,7 +31,9 @@ export default class PopupView {
       styles: styles.popup || {},
     });
     this.el.thumb = this.dom.createElement({ classList: ["fly-popup__thumb"] });
-    this.el.closeBtn = this.dom.createElement({ classList: ["fly-popup__close"] });
+    if (showCloseBtn) {
+      this.el.closeBtn = this.dom.createElement({ classList: ["fly-popup__close"] });
+    }
 
     this.el.box.appendChild(this.el.bg);
     this.el.box.appendChild(this.el.popup);
@@ -39,7 +41,7 @@ export default class PopupView {
   }
 
   setCloseBtnIcon(html) {
-    this.el.closeBtn.innerHTML = html || "";
+    if (this.el.closeBtn) this.el.closeBtn.innerHTML = html || "";
   }
 
   mountContent(content) {
@@ -53,7 +55,7 @@ export default class PopupView {
     }
 
     this.el.popup.appendChild(this.el.thumb);
-    this.el.popup.appendChild(this.el.closeBtn);
+    if (this.el.closeBtn) this.el.popup.appendChild(this.el.closeBtn);
   }
 
   applyDirection(direction) {
@@ -133,7 +135,7 @@ export default class PopupView {
 
   attachHandlers({ onBgClick, onCloseClick, onTouchMove, onTouchEnd }) {
     this.el.bg.onclick = onBgClick || null;
-    this.el.closeBtn.onclick = onCloseClick || null;
+    if (this.el.closeBtn) this.el.closeBtn.onclick = onCloseClick || null;
     this.el.bg.ontouchmove = onTouchMove || null;
     this.el.bg.ontouchend = onTouchEnd || null;
     this.el.thumb.ontouchmove = onTouchMove || null;

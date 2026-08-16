@@ -26,10 +26,11 @@ export default class PopupPresenter {
   }
 
   setCloseBtnIcon() {
+    if (!this.view.el.closeBtn) return;
+
     const html = `${CLOSE_ICON_SYMBOL}<svg width="50" height="50"><use href="#close"></use></svg>`;
 
     this.view.setCloseBtnIcon(html);
-    if (this.view.el.closeBtn) this.view.el.closeBtn.innerHTML = html;
   }
 
   showPopup(options = {}) {
@@ -47,9 +48,9 @@ export default class PopupPresenter {
       styles: { popup: { zIndex: zPopup }, bg: { zIndex: zBg } },
     });
 
-    const { styles, swipe, closeConfirm, lockClose } = this.model.options;
+    const { styles, swipe, closeConfirm, lockClose, showCloseBtn } = this.model.options;
 
-    this.view.createSkeleton(styles);
+    this.view.createSkeleton(styles, showCloseBtn);
 
     const onKey = (event) => {
       const topPopup = PopupPresenter.activePopups.at(-1);
@@ -62,7 +63,7 @@ export default class PopupPresenter {
 
     this.view.lockBody(true);
 
-    this.setCloseBtnIcon();
+    if (showCloseBtn) this.setCloseBtnIcon();
 
     const { content } = this.model.state;
     if (content) this.view.mountContent(content);
