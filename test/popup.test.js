@@ -65,13 +65,15 @@ test("content accepts only HTMLElement-like nodes", () => {
 
 test("canonical DOM and accessible close button are mounted", () => {
   const popup = open({ closeButtonLabel: "Dismiss" });
-  assert.equal(popup.element.className, "fly-popup fly-popup--center");
+  assert.equal(popup.element.className, "fly-popup fly-popup--swipe-disabled fly-popup--center");
   assert.equal(popup.element.children[0].className, "fly-popup__background");
   assert.equal(popup.panelElement.className, "fly-popup__window");
   assert.equal(popup.panelElement.getAttribute("role"), "dialog");
   assert.equal(popup.panelElement.getAttribute("aria-modal"), "true");
   assert.equal(popup.contentElement.className, "fly-popup__content");
   assert.equal(popup.view.el.thumb.parentNode, popup.panelElement);
+  assert.equal(popup.view.el.gestureZone.className, "fly-popup__gesture-zone");
+  assert.equal(popup.view.el.gestureZone.parentNode, popup.element);
   assert.equal(popup.view.el.closeBtn.tagName, "BUTTON");
   assert.equal(popup.view.el.closeBtn.type, "button");
   assert.equal(popup.view.el.closeBtn.getAttribute("aria-label"), "Dismiss");
@@ -291,6 +293,18 @@ test("sizing and z-index options are exposed on the root", () => {
   assert.equal(popup.element.style.getPropertyValue("--popup-z-index"), "9000");
 });
 
+test("opening waits for an initial painted frame and uses the configured duration", () => {
+  const popup = Popup.create({ content: content(), direction: "bottomToTop", timeout: 500 });
+  assert.equal(popup.panelElement.style.transition, "transform 500ms, opacity 500ms");
+  assert.equal(popup.panelElement.style.transform, "");
+
+  dom.window.flushAnimationFrames();
+  assert.equal(popup.panelElement.style.transform, "");
+
+  dom.window.flushAnimationFrames();
+  assert.equal(popup.panelElement.style.transform, "translate3d(0,0,0)");
+});
+
 test("slide layouts retain configurable viewport edge gaps", () => {
   assert.match(popupStyles, /--popup-edge-gap-vertical: 32px/);
   assert.match(popupStyles, /--popup-edge-gap-horizontal: 12px/);
@@ -316,6 +330,29 @@ test("slide layouts retain configurable viewport edge gaps", () => {
   assert.match(compiledPopupCss, /--popup-edge-gap-horizontal: 12px/);
   assert.match(compiledPopupCss, /calc\(100% - var\(--popup-edge-gap-vertical\)\)/);
   assert.match(compiledPopupCss, /calc\(100% - var\(--popup-edge-gap-horizontal\)\)/);
+  assert.match(popupStyles, /--popup-close-color:\s*#3b82f6/);
+  assert.match(popupStyles, /color:\s*var\(--popup-close-color\)/);
+  assert.match(compiledPopupCss, /--popup-close-color:\s*#3b82f6/);
+  assert.match(compiledPopupCss, /color:\s*var\(--popup-close-color\)/);
+});
+
+test("gesture zone follows each directional edge gap", () => {
+  assert.match(
+    popupStyles,
+    /&--bottom-to-top\s*{[\s\S]*?\.fly-popup__gesture-zone\s*{\s*display:\s*block;\s*top:\s*0;\s*left:\s*0;\s*width:\s*100%;\s*height:\s*var\(--popup-edge-gap-vertical\)/,
+  );
+  assert.match(
+    popupStyles,
+    /&--top-to-bottom\s*{[\s\S]*?\.fly-popup__gesture-zone\s*{\s*display:\s*block;\s*bottom:\s*0;\s*left:\s*0;\s*width:\s*100%;\s*height:\s*var\(--popup-edge-gap-vertical\)/,
+  );
+  assert.match(
+    popupStyles,
+    /&--left-to-right\s*{[\s\S]*?\.fly-popup__gesture-zone\s*{\s*display:\s*block;\s*top:\s*0;\s*right:\s*0;\s*width:\s*var\(--popup-edge-gap-horizontal\);\s*height:\s*100%/,
+  );
+  assert.match(
+    popupStyles,
+    /&--right-to-left\s*{[\s\S]*?\.fly-popup__gesture-zone\s*{\s*display:\s*block;\s*top:\s*0;\s*left:\s*0;\s*width:\s*var\(--popup-edge-gap-horizontal\);\s*height:\s*100%/,
+  );
 });
 
 test("stack has unique automatic z-index and supports closing A first", async () => {
@@ -398,6 +435,10 @@ test("scrollLock false does not become a body-lock owner", async () => {
 test("backdrop closes normally but is never a swipe target", async () => {
   const popup = open({ direction: "bottomToTop" });
   assert.equal(popup.view.el.bg.onpointerdown, undefined);
+  popup.view.el.bg.dispatchEvent(event("pointerdown", {
+    pointerId: 1, isPrimary: true, clientX: 10, clientY: 10,
+  }));
+  assert.equal(popup.model.state.pointerId, null);
   popup.view.el.bg.dispatchEvent(event("click"));
   await settle();
   assert.equal(popup.lifecycle, "destroyed");
@@ -408,8 +449,58 @@ test("backdrop closes normally but is never a swipe target", async () => {
   assert.equal(protectedPopup.lifecycle, "open");
 });
 
+test("swipe is enabled by default for directional popups", () => {
+  const popup = open({ direction: "bottomToTop" });
+  assert.equal(popup.model.options.swipeEnabled, true);
+  assert.equal(popup.element.classList.contains("fly-popup--swipe-disabled"), false);
+  assert.equal(typeof popup.view.el.thumb.onpointerdown, "function");
+  assert.equal(typeof popup.view.el.gestureZone.onpointerdown, "function");
+});
+
+test("swipeEnabled false hides both gesture areas and does not attach handlers", () => {
+  const popup = open({ direction: "rightToLeft", swipeEnabled: false });
+  const thumb = popup.view.el.thumb;
+  const gestureZone = popup.view.el.gestureZone;
+
+  assert.equal(popup.element.classList.contains("fly-popup--swipe-disabled"), true);
+  assert.match(popupStyles, /&--swipe-disabled\s*{[\s\S]*?\.fly-popup__thumb,[\s\S]*?\.fly-popup__gesture-zone\s*{\s*display:\s*none/);
+  assert.match(
+    compiledPopupCss,
+    /\.fly-popup--swipe-disabled \.fly-popup__thumb,[\s\S]*?\.fly-popup--swipe-disabled \.fly-popup__gesture-zone\s*{\s*display:\s*none/,
+  );
+  assert.equal(thumb.onpointerdown, null);
+  assert.equal(thumb.onpointermove, null);
+  assert.equal(thumb.onpointerup, null);
+  assert.equal(thumb.onpointercancel, null);
+  assert.equal(gestureZone.onpointerdown, null);
+  assert.equal(gestureZone.onpointermove, null);
+  assert.equal(gestureZone.onpointerup, null);
+  assert.equal(gestureZone.onpointercancel, null);
+});
+
+test("swipeEnabled false preserves directional opening and closing states", async () => {
+  let closedTransform;
+  let panel;
+  const popup = open({
+    direction: "leftToRight",
+    swipeEnabled: false,
+    onClose: () => {
+      closedTransform = panel.style.transform;
+    },
+  });
+  panel = popup.panelElement;
+
+  assert.equal(popup.element.classList.contains("fly-popup--left-to-right"), true);
+  assert.equal(popup.panelElement.style.transform, "translate3d(0,0,0)");
+  await popup.closePopup();
+  assert.equal(closedTransform, "translate3d(-100%,0,0)");
+});
+
 test("center mode has no active swipe gesture", () => {
-  const popup = open({ direction: "center" });
+  const popup = open({ direction: "center", swipeEnabled: true });
+  assert.equal(popup.element.classList.contains("fly-popup--swipe-disabled"), true);
+  assert.equal(popup.view.el.thumb.onpointerdown, null);
+  assert.equal(popup.view.el.gestureZone.onpointerdown, null);
   popup.view.el.thumb.dispatchEvent(event("pointerdown", {
     pointerId: 1,
     isPrimary: true,
@@ -419,7 +510,32 @@ test("center mode has no active swipe gesture", () => {
   assert.equal(popup.model.state.pointerId, null);
 });
 
-test("all four swipe directions close past the distance threshold", async () => {
+test("non-gesture close controls keep working when swipe is disabled", async () => {
+  const backdrop = open({ direction: "bottomToTop", swipeEnabled: false });
+  backdrop.view.el.bg.dispatchEvent(event("click"));
+  await settle();
+  assert.equal(backdrop.lifecycle, "destroyed");
+
+  const escape = open({ direction: "bottomToTop", swipeEnabled: false });
+  dom.document.dispatchEvent(event("keydown", { key: "Escape" }));
+  await settle();
+  assert.equal(escape.lifecycle, "destroyed");
+
+  const button = open({ direction: "bottomToTop", swipeEnabled: false });
+  button.view.el.closeBtn.dispatchEvent(event("click"));
+  await settle();
+  assert.equal(button.lifecycle, "destroyed");
+});
+
+test("iframe and content never receive gesture handlers when swipe is disabled", () => {
+  const iframe = content("iframe");
+  const popup = open({ content: iframe, direction: "rightToLeft", swipeEnabled: false });
+  assert.equal(popup.contentElement.onpointerdown, undefined);
+  assert.equal(iframe.onpointerdown, undefined);
+  assert.equal(popup.view.el.thumb.onpointerdown, null);
+});
+
+test("swipe starts from the thumb in all four directions", async () => {
   const cases = [
     ["bottomToTop", 100, 100, 100, 220],
     ["topToBottom", 100, 220, 100, 100],
@@ -557,6 +673,135 @@ test("responsive overrides cascade without mutating base options", () => {
   assert.equal(popup.element.classList.contains("fly-popup--center"), true);
   assert.equal(popup.element.style.getPropertyValue("--popup-width"), "320px");
   assert.deepEqual(responsive[768], { direction: "rightToLeft", width: "560px" });
+});
+
+test("swipe starts from the edge gesture zone in all four directions", async () => {
+  const cases = [
+    ["bottomToTop", 100, 100, 100, 220],
+    ["topToBottom", 100, 220, 100, 100],
+    ["leftToRight", 220, 100, 100, 100],
+    ["rightToLeft", 100, 100, 220, 100],
+  ];
+
+  for (const [direction, startX, startY, endX, endY] of cases) {
+    const popup = open({ direction });
+    const gestureZone = popup.view.el.gestureZone;
+    gestureZone.dispatchEvent(event("pointerdown", {
+      pointerId: 8,
+      isPrimary: true,
+      clientX: startX,
+      clientY: startY,
+      timeStamp: 0,
+    }));
+    assert.equal(popup.model.state.pointerId, 8, direction);
+    gestureZone.dispatchEvent(event("pointerup", {
+      pointerId: 8,
+      clientX: endX,
+      clientY: endY,
+      timeStamp: 400,
+    }));
+    await settle();
+    assert.equal(popup.lifecycle, "destroyed", direction);
+  }
+});
+
+test("edge gesture zone handles pointercancel through the shared gesture flow", () => {
+  const popup = open({ direction: "bottomToTop", timeout: 100 });
+  const gestureZone = popup.view.el.gestureZone;
+  gestureZone.dispatchEvent(event("pointerdown", {
+    pointerId: 3, isPrimary: true, clientX: 20, clientY: 20,
+  }));
+  gestureZone.dispatchEvent(event("pointermove", {
+    pointerId: 3, clientX: 20, clientY: 180,
+  }));
+  gestureZone.dispatchEvent(event("pointercancel", { pointerId: 3 }));
+  dom.window.flushAnimationFrames();
+  assert.equal(popup.model.state.pointerId, null);
+  assert.equal(popup.panelElement.style.transform, "translate3d(0,0,0)");
+});
+
+test("responsive swipe changes detach and restore gesture handlers", () => {
+  dom.window.innerWidth = 600;
+  const popup = open({
+    direction: "bottomToTop",
+    swipeEnabled: true,
+    responsive: {
+      900: { direction: "rightToLeft", swipeEnabled: false },
+    },
+  });
+  assert.equal(typeof popup.view.el.thumb.onpointerdown, "function");
+  assert.equal(typeof popup.view.el.gestureZone.onpointerdown, "function");
+
+  dom.window.innerWidth = 1000;
+  dom.window.dispatchEvent(event("resize"));
+  assert.equal(popup.element.classList.contains("fly-popup--right-to-left"), true);
+  assert.equal(popup.element.classList.contains("fly-popup--swipe-disabled"), true);
+  assert.equal(popup.view.el.thumb.onpointerdown, null);
+  assert.equal(popup.view.el.gestureZone.onpointerdown, null);
+
+  dom.window.innerWidth = 600;
+  dom.window.dispatchEvent(event("resize"));
+  assert.equal(popup.element.classList.contains("fly-popup--bottom-to-top"), true);
+  assert.equal(popup.element.classList.contains("fly-popup--swipe-disabled"), false);
+  assert.equal(typeof popup.view.el.thumb.onpointerdown, "function");
+  assert.equal(typeof popup.view.el.gestureZone.onpointerdown, "function");
+});
+
+test("responsive false to true enables swipe", () => {
+  dom.window.innerWidth = 600;
+  const popup = open({
+    direction: "rightToLeft",
+    swipeEnabled: false,
+    responsive: { 900: { swipeEnabled: true } },
+  });
+  assert.equal(popup.view.el.thumb.onpointerdown, null);
+
+  dom.window.innerWidth = 1000;
+  dom.window.dispatchEvent(event("resize"));
+  assert.equal(typeof popup.view.el.thumb.onpointerdown, "function");
+  assert.equal(popup.element.classList.contains("fly-popup--swipe-disabled"), false);
+});
+
+test("responsive direction changes the gesture-zone edge", () => {
+  dom.window.innerWidth = 600;
+  const popup = open({
+    direction: "bottomToTop",
+    responsive: { 900: { direction: "rightToLeft" } },
+  });
+  const gestureZone = popup.view.el.gestureZone;
+  assert.equal(popup.element.classList.contains("fly-popup--bottom-to-top"), true);
+  assert.equal(typeof gestureZone.onpointerdown, "function");
+
+  dom.window.innerWidth = 1000;
+  dom.window.dispatchEvent(event("resize"));
+  assert.equal(popup.view.el.gestureZone, gestureZone);
+  assert.equal(popup.element.classList.contains("fly-popup--bottom-to-top"), false);
+  assert.equal(popup.element.classList.contains("fly-popup--right-to-left"), true);
+  assert.equal(typeof gestureZone.onpointerdown, "function");
+});
+
+test("disabling swipe during an active gesture clears its transform", () => {
+  dom.window.innerWidth = 600;
+  const popup = open({
+    direction: "bottomToTop",
+    swipeEnabled: true,
+    responsive: { 900: { direction: "rightToLeft", swipeEnabled: false } },
+  });
+  const thumb = popup.view.el.thumb;
+  thumb.dispatchEvent(event("pointerdown", {
+    pointerId: 9, isPrimary: true, clientX: 20, clientY: 20,
+  }));
+  thumb.dispatchEvent(event("pointermove", {
+    pointerId: 9, clientX: 20, clientY: 180,
+  }));
+  assert.notEqual(popup.panelElement.style.transform, "translate3d(0,0,0)");
+
+  dom.window.innerWidth = 1000;
+  dom.window.dispatchEvent(event("resize"));
+  assert.equal(popup.model.state.pointerId, null);
+  assert.equal(thumb._capturedPointerId, null);
+  assert.equal(popup.panelElement.style.transform, "translate3d(0,0,0)");
+  assert.equal(popup.view.el.thumb.onpointerdown, null);
 });
 
 test("visualViewport values and keyboard-like changes update CSS variables", () => {

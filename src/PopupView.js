@@ -16,6 +16,8 @@ const DIRECTION_CLASS_MAP = {
   rightToLeft: "fly-popup--right-to-left",
 };
 
+const SWIPE_DISABLED_CLASS = "fly-popup--swipe-disabled";
+
 const SIZE_VARIABLES = {
   width: "--popup-width",
   maxWidth: "--popup-max-width",
@@ -39,6 +41,7 @@ export default class PopupView {
       popup: null,
       content: null,
       thumb: null,
+      gestureZone: null,
       closeBtn: null,
     };
   }
@@ -57,11 +60,16 @@ export default class PopupView {
       classList: ["fly-popup__thumb"],
       attributes: { "aria-hidden": "true" },
     });
+    this.el.gestureZone = this.dom.createElement({
+      classList: ["fly-popup__gesture-zone"],
+      attributes: { "aria-hidden": "true" },
+    });
 
     this.el.popup.appendChild(this.el.content);
     this.el.popup.appendChild(this.el.thumb);
     this.el.box.appendChild(this.el.bg);
     this.el.box.appendChild(this.el.popup);
+    this.el.box.appendChild(this.el.gestureZone);
     document.body.appendChild(this.el.box);
 
     this.setCloseButton(options.showCloseButton !== false, options.closeButtonLabel);
@@ -117,6 +125,10 @@ export default class PopupView {
     }
 
     this.setCloseButton(options.showCloseButton !== false, options.closeButtonLabel);
+    this.el.box.classList.toggle(
+      SWIPE_DISABLED_CLASS,
+      options.swipeEnabled === false || options.direction === "center",
+    );
     this.applyDirection(options.direction, initial);
   }
 
@@ -154,7 +166,10 @@ export default class PopupView {
     const popup = this.el.popup;
     this._scheduleFrame(() => {
       if (this.el.popup !== popup || !popup.isConnected) return;
-      this._applyOpenState();
+      this._scheduleFrame(() => {
+        if (this.el.popup !== popup || !popup.isConnected) return;
+        this._applyOpenState();
+      });
     });
   }
 
@@ -231,26 +246,46 @@ export default class PopupView {
     return Math.max(1, size || (horizontal ? window.innerWidth : window.innerHeight));
   }
 
-  attachHandlers({ onBackdropClick, onCloseClick, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }) {
+  releasePointer(pointerId) {
+    if (pointerId === null) return;
+    for (const target of [this.el.thumb, this.el.gestureZone]) {
+      try {
+        target?.releasePointerCapture?.(pointerId);
+      } catch {}
+    }
+  }
+
+  attachHandlers({
+    onBackdropClick,
+    onCloseClick,
+    onPointerDown,
+    onPointerMove,
+    onPointerUp,
+    onPointerCancel,
+    swipeEnabled,
+  }) {
     this.detachHandlers();
-    if (!this.el.bg || !this.el.thumb) return;
+    if (!this.el.bg || !this.el.thumb || !this.el.gestureZone) return;
 
     this.el.bg.onclick = onBackdropClick || null;
-    this.el.thumb.onpointerdown = onPointerDown || null;
-    this.el.thumb.onpointermove = onPointerMove || null;
-    this.el.thumb.onpointerup = onPointerUp || null;
-    this.el.thumb.onpointercancel = onPointerCancel || null;
+    for (const target of [this.el.thumb, this.el.gestureZone]) {
+      target.onpointerdown = swipeEnabled ? onPointerDown || null : null;
+      target.onpointermove = swipeEnabled ? onPointerMove || null : null;
+      target.onpointerup = swipeEnabled ? onPointerUp || null : null;
+      target.onpointercancel = swipeEnabled ? onPointerCancel || null : null;
+    }
     if (this.el.closeBtn) this.el.closeBtn.onclick = onCloseClick || null;
   }
 
   detachHandlers() {
     if (this.el.bg) this.el.bg.onclick = null;
     if (this.el.closeBtn) this.el.closeBtn.onclick = null;
-    if (this.el.thumb) {
-      this.el.thumb.onpointerdown = null;
-      this.el.thumb.onpointermove = null;
-      this.el.thumb.onpointerup = null;
-      this.el.thumb.onpointercancel = null;
+    for (const target of [this.el.thumb, this.el.gestureZone]) {
+      if (!target) continue;
+      target.onpointerdown = null;
+      target.onpointermove = null;
+      target.onpointerup = null;
+      target.onpointercancel = null;
     }
   }
 

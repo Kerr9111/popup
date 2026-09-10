@@ -17,6 +17,7 @@ export interface PopupCloseContext extends PopupContext {
 
 export interface PopupResponsiveOptions {
   direction?: PopupDirection;
+  swipeEnabled?: boolean;
   timeout?: number;
   width?: string | null;
   maxWidth?: string | null;

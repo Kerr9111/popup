@@ -1,6 +1,6 @@
 {
   "name": "@vecdev/popup",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Generic browser popup with directional gestures, responsive sizing, stacking, and iframe support.",
   "type": "module",
   "main": "./src/index.js",

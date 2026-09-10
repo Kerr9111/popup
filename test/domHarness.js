@@ -177,6 +177,10 @@ export class FakeElement extends FakeEventTarget {
   setPointerCapture(pointerId) {
     this._capturedPointerId = pointerId;
   }
+
+  releasePointerCapture(pointerId) {
+    if (this._capturedPointerId === pointerId) this._capturedPointerId = null;
+  }
 }
 
 class FakeDocument extends FakeEventTarget {

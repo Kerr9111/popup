@@ -209,6 +209,7 @@ export default class PopupPresenter {
   }
 
   _attachHandlers() {
+    const swipeEnabled = this._isSwipeEnabled();
     this.view.attachHandlers({
       onBackdropClick: () => {
         if (this.model.options?.closeOnBackdrop !== false) this._requestClose();
@@ -218,6 +219,7 @@ export default class PopupPresenter {
       onPointerMove: (event) => this.onPointerMove(event),
       onPointerUp: (event) => this.onPointerUp(event),
       onPointerCancel: (event) => this.onPointerCancel(event),
+      swipeEnabled,
     });
   }
 
@@ -240,6 +242,7 @@ export default class PopupPresenter {
     if (this.model.state.lifecycle === "closing" || this._responsiveWidth === viewport.width) return;
 
     this._responsiveWidth = viewport.width;
+    this.view.releasePointer(this.model.state.pointerId);
     this.model.resetGesture();
     this.model.resolveResponsive(viewport.width);
     this._applyEffectiveOptions(false);
@@ -256,13 +259,18 @@ export default class PopupPresenter {
   _canStartGesture(event) {
     const direction = this.model.options?.direction;
     return !!(
+      this._isSwipeEnabled() &&
       direction &&
-      direction !== "center" &&
       this.model.state.lifecycle === "open" &&
       getTopmostPopup(this.runtime) === this &&
       event.isPrimary !== false &&
       (event.button === undefined || event.button === 0)
     );
+  }
+
+  _isSwipeEnabled() {
+    const options = this.model.options;
+    return options?.swipeEnabled !== false && options?.direction !== "center";
   }
 
   onPointerDown(event) {

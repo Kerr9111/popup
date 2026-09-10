@@ -65,7 +65,8 @@ an open popup. The method is unavailable after the instance has been destroyed.
 
 ## Directions
 
-`direction` describes how the popup enters the viewport:
+`direction` describes the popup placement and how it enters and leaves the
+viewport:
 
 - `leftToRight` — positioned on the left, enters from left to right, and closes by swiping back to the left;
 - `rightToLeft` — positioned on the right, enters from right to left, and closes by swiping right;
@@ -73,11 +74,19 @@ an open popup. The method is unavailable after the instance has been destroyed.
 - `bottomToTop` — positioned at the bottom, enters upward, and closes by swiping down;
 - `center` — centered popup without swipe-to-close.
 
-A swipe can start only on `.fly-popup__thumb`. The small visual handle is drawn
-with `::before`, while the actual gesture/hit area is significantly larger
-(48–64 px). Neither the backdrop nor the content is a gesture target. The popup
-closes after either a sufficiently long drag or a fast directional flick. A
-short gesture or `pointercancel` returns it to the open position.
+`swipeEnabled` controls only whether the popup can be closed with a gesture. It
+defaults to `true`. Setting it to `false` keeps the selected `direction`
+placement and animations, but hides both gesture areas and does not attach
+pointer handlers. For `center`, swipe is always effectively disabled regardless
+of the option value.
+
+A swipe can start on `.fly-popup__thumb`. The small visual handle is drawn with
+`::before`, while the actual gesture/hit area is significantly larger (48–64
+px). It can also start on the transparent `.fly-popup__gesture-zone`, which
+occupies the edge gap opposite the popup's opening edge. Neither the rest of
+the backdrop nor the content is a gesture target. The popup closes after either
+a sufficiently long drag or a fast directional flick. A short gesture or
+`pointercancel` returns it to the open position.
 
 ## Closing
 
@@ -120,10 +129,11 @@ The stable DOM structure is:
 ```text
 .fly-popup
 |-- .fly-popup__background
-`-- .fly-popup__window
+|-- .fly-popup__window
     |-- .fly-popup__content
     |-- .fly-popup__thumb
     `-- .fly-popup__close
+`-- .fly-popup__gesture-zone
 ```
 
 `.fly-popup__window` is a flex container with `overflow: hidden`. Regular long
@@ -173,6 +183,7 @@ Public generic variables:
 - `--popup-width`, `--popup-max-width`;
 - `--popup-height`, `--popup-max-height`;
 - `--popup-backdrop-opacity`;
+- `--popup-close-color` (default: `#3b82f6`);
 - `--popup-viewport-width`, `--popup-viewport-height`;
 - `--popup-viewport-offset-left`, `--popup-viewport-offset-top`.
 - `--popup-edge-gap-vertical` (default: `32px`);
@@ -199,11 +210,13 @@ overrides are applied in ascending order without mutating the base options:
 Popup.create({
   content,
   direction: "bottomToTop",
+  swipeEnabled: true,
   width: "100%",
   maxHeight: "85%",
   responsive: {
     768: {
       direction: "rightToLeft",
+      swipeEnabled: false,
       width: "560px",
       height: "100%",
       maxHeight: "100%",
@@ -215,9 +228,12 @@ Popup.create({
 });
 ```
 
-When an open popup is resized, its direction, dimensions, z-index, and
-close/scroll options are recalculated. The new layout is applied immediately,
-without an intermediate animation or stale modifier classes.
+This example enables swipe for the mobile bottom sheet and disables it for the
+desktop side panel. When an open popup is resized, its direction, swipe state,
+dimensions, z-index, and close/scroll options are recalculated. The new layout
+is applied immediately, without an intermediate animation or stale modifier
+classes. Disabling swipe during an active gesture cancels the gesture and
+restores the popup to its fully open position.
 
 ## Stacking, Body Scroll Lock and Viewport
 

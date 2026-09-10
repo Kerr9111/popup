@@ -75,6 +75,23 @@ function showWithoutCloseButton() {
   });
 }
 
+function showResponsiveSwipe() {
+  openPopup({
+    content: createContent(
+      "Responsive swipe",
+      "Mobile: bottom sheet with swipe. Desktop: right side panel without swipe.",
+    ),
+    direction: "bottomToTop",
+    swipeEnabled: true,
+    responsive: {
+      900: {
+        direction: "rightToLeft",
+        swipeEnabled: false,
+      },
+    },
+  });
+}
+
 function showIframe() {
   const iframe = document.createElement("iframe");
   const hub = createParentHub({ channel: IFRAME_CHANNEL });
@@ -114,5 +131,6 @@ document.addEventListener("click", (event) => {
   else if (demo === "nested") showStack();
   else if (demo === "long") showLong();
   else if (demo === "withoutCloseButton") showWithoutCloseButton();
+  else if (demo === "responsiveSwipe") showResponsiveSwipe();
   else show(demo);
 });

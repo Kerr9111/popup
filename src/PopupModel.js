@@ -8,6 +8,7 @@ export const POPUP_DIRECTIONS = [
 
 const SIZE_OPTIONS = ["width", "maxWidth", "height", "maxHeight"];
 const BOOLEAN_OPTIONS = [
+  "swipeEnabled",
   "showCloseButton",
   "closeOnEscape",
   "closeOnBackdrop",
@@ -44,6 +45,7 @@ function createDefaultOptions() {
     height: null,
     maxHeight: null,
     zIndex: null,
+    swipeEnabled: true,
     showCloseButton: true,
     closeButtonLabel: "Close",
     closeOnEscape: true,
