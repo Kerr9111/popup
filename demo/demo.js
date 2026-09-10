@@ -15,7 +15,7 @@ function content(title, text) {
 }
 
 function attachContentClose(popup) {
-  popup.view.el.popup.querySelector("[data-close]")?.addEventListener("click", () => popup.closePopup());
+  popup.panelElement.querySelector("[data-close]")?.addEventListener("click", () => popup.closePopup());
 }
 
 function show(direction = "") {
@@ -53,7 +53,7 @@ function showNested() {
   const button = document.createElement("button");
   button.type = "button";
   button.textContent = "Open nested popup";
-  parent.view.el.popup.prepend(button);
+  parent.panelElement.prepend(button);
   button.addEventListener("click", () => show("bottomToTop"));
 }
 

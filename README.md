@@ -108,7 +108,13 @@ popup.forceRemove();
 
 The close button, backdrop, Escape key, content controls, and swipe gestures all
 use the same normal close flow. When several popups are open, Escape affects
-only the topmost instance.
+only the visually topmost instance. Set `closeOnEscape: false` to make the
+topmost popup ignore Escape without closing a popup below it, or
+`closeOnBackdrop: false` to disable backdrop closing.
+
+`forceRemove()` is idempotent. Internal DOM, timers, listeners, stack state, and
+body locking are cleaned before `callback` or `onClose` runs, including when a
+close callback throws or calls `forceRemove()` again.
 
 ### Close Button Visibility
 
@@ -263,6 +269,40 @@ popup.showPopup({
 });
 ```
 
+All matching entries are merged in ascending order. The options are recomputed
+from the unchanged base configuration when the viewport width changes, so
+reopening an instance at a different width does not retain a stale responsive
+override.
+
+## Stacking and viewport
+
+Popup instances share their stack, Escape handler, viewport state, and body
+scroll lock through `globalThis[Symbol.for("@vecdev/popup/runtime/v1")]`. This
+keeps separate webpack entries or physical copies of the package coordinated
+when they run in the same window.
+
+Automatic root z-index values are unique for the lifetime of the active stack.
+Use `zIndex` when a popup must participate in an application's existing layer
+system:
+
+```js
+popup.showPopup({ zIndex: 5000 });
+```
+
+The highest root z-index is treated as topmost; equal values are ordered by
+open sequence. Body scroll locking is owner-based and can be disabled per popup
+with `scrollLock: false`.
+
+When `window.visualViewport` is available, the root receives current viewport
+dimensions and offsets through these CSS variables:
+
+- `--popup-viewport-height`
+- `--popup-viewport-width`
+- `--popup-viewport-offset-top`
+- `--popup-viewport-offset-left`
+
+The layout viewport is used as a fallback.
+
 ## Options
 
 ```js
@@ -280,6 +320,10 @@ popup.showPopup({
     768: { styles: { popup: { width: "80%" } } }
   },
   showCloseBtn: true,
+  zIndex: 5000,
+  closeOnEscape: true,
+  closeOnBackdrop: true,
+  scrollLock: true,
   closeConfirm: {
     title: "Close without saving?",
     close: true,
@@ -287,12 +331,16 @@ popup.showPopup({
     cancel: true
   },
   lockClose: false,
+  onOpen: ({ popup }) => {},
+  onClose: ({ popup, reason, forced }) => {},
   callback: () => {}
 }
 ```
 
-The `callback` function runs when the popup is removed. Use it to unsubscribe
-event handlers, destroy message bridges, and release application resources.
+`onClose` receives the popup, close reason, and whether removal was forced.
+The legacy `callback` remains supported and runs at the same point, after
+internal cleanup. Use either hook to unsubscribe event handlers, destroy
+message bridges, and release application resources.
 
 ## API
 
@@ -303,7 +351,13 @@ event handlers, destroy message bridges, and release application resources.
 - `closePopup(closeConfirmOption?)` - run the normal close flow.
 - `forceRemove()` - remove the popup without confirmation.
 - `setSmartPopup(options)` - create a simple confirm-like content element.
+- `isOpen` - read-only open state.
+- `element` - current root element or `null`.
+- `panelElement` - current popup window element or `null`.
 - `activePopups` - exported live array of currently open popup instances.
+
+`activePopups` is retained for compatibility. Treat it as read-only; a future
+major API will replace the mutable array with snapshot accessors.
 
 ## Demo
 

@@ -1,20 +1,27 @@
 export default class PopupModel {
   constructor() {
     this.state = {
+      lifecycle: "idle",
       isOpen: false,
       content: null,
       startX: null,
       startY: null,
+      activePointerId: null,
       onCloseCallback: null,
+      onClose: null,
       lockClose: false,
     };
 
-    this.options = {
+    this.baseOptions = {
       swipe: { direction: "", timeout: 300 },
       styles: { popup: {}, bg: {} },
       data: {},
       responsive: null,
       showCloseBtn: true,
+      zIndex: null,
+      closeOnEscape: true,
+      closeOnBackdrop: true,
+      scrollLock: true,
       closeConfirm: {
         title: "",
         close: false,
@@ -22,6 +29,7 @@ export default class PopupModel {
         cancel: false,
       },
     };
+    this.options = deepMerge({}, this.baseOptions);
   }
 
   setContent(content) {
@@ -29,27 +37,48 @@ export default class PopupModel {
   }
 
   setOptions(partial) {
-    this.options = deepMerge(this.options, partial || {});
+    const persistent = { ...(partial || {}) };
+    delete persistent.callback;
+    delete persistent.onOpen;
+    delete persistent.onClose;
+    this.baseOptions = deepMerge(this.baseOptions, persistent);
+    this.options = deepMerge({}, this.baseOptions);
   }
 
   setResponsiveOptions(screenWidth) {
-    const responsive = this.options.responsive;
-    if (!responsive) return;
+    const responsive = this.baseOptions.responsive;
+    let effective = deepMerge({}, this.baseOptions);
+    if (!responsive) {
+      this.options = effective;
+      return;
+    }
 
     const sortedBreakpoints = Object.keys(responsive)
       .map((key) => parseInt(key, 10))
+      .filter(Number.isFinite)
       .sort((a, b) => a - b);
 
-    let picked = {};
     for (const breakpoint of sortedBreakpoints) {
-      if (screenWidth >= breakpoint) picked = responsive[breakpoint];
+      if (screenWidth >= breakpoint) {
+        effective = deepMerge(effective, responsive[breakpoint] || {});
+      }
     }
 
-    this.setOptions(picked);
+    this.options = effective;
   }
 
-  setOnClose(callback) {
+  setOnClose(callback, onClose) {
     this.state.onCloseCallback = typeof callback === "function" ? callback : null;
+    this.state.onClose = typeof onClose === "function" ? onClose : null;
+  }
+
+  takeOnCloseCallbacks() {
+    const callbacks = [this.state.onCloseCallback, this.state.onClose].filter(
+      (callback, index, list) => typeof callback === "function" && list.indexOf(callback) === index,
+    );
+    this.state.onCloseCallback = null;
+    this.state.onClose = null;
+    return callbacks;
   }
 
   setLockClose(lock) {
@@ -67,17 +96,25 @@ export default class PopupModel {
   resetTouchStart() {
     this.state.startX = null;
     this.state.startY = null;
+    this.state.activePointerId = null;
+  }
+
+  setActivePointerId(pointerId) {
+    this.state.activePointerId = pointerId;
   }
 }
 
 function isPlainObject(value) {
-  return value && typeof value === "object" && !Array.isArray(value);
+  if (!value || Object.prototype.toString.call(value) !== "[object Object]") return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 function deepMerge(base, patch) {
   const out = { ...base };
 
-  for (const key in patch) {
+  for (const key of Object.keys(patch)) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
     if (isPlainObject(patch[key]) && isPlainObject(base[key])) {
       out[key] = deepMerge(base[key], patch[key]);
     } else {

@@ -9,7 +9,9 @@ export default class Popup extends PopupPresenter {
 
   static create(options = {}) {
     const popup = new this();
-    if (options.content) popup.setContent(options.content);
+    if (Object.prototype.hasOwnProperty.call(options, "content")) {
+      popup.setContent(options.content);
+    }
     popup.showPopup(options);
     return popup;
   }

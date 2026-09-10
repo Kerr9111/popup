@@ -1,14 +1,32 @@
 import DOMUtils from "dom-utils-light";
 
+const DIRECTION_CLASSES = [
+  "fly-popup--bottom-to-top",
+  "fly-popup--top-to-bottom",
+  "fly-popup--left-to-right",
+  "fly-popup--right-to-left",
+];
+
+const DIRECTION_CLASS_MAP = {
+  bottomToTop: "fly-popup--bottom-to-top",
+  topToBottom: "fly-popup--top-to-bottom",
+  leftToRight: "fly-popup--left-to-right",
+  rightToLeft: "fly-popup--right-to-left",
+};
+
 export default class PopupView {
   constructor() {
     this.dom = new DOMUtils();
-    this.bodyLockState = {
-      overflow: "",
-      paddingRight: "",
-    };
+    this._timeouts = new Set();
+    this._animationFrames = new Set();
+    this._popupStyleKeys = new Set();
+    this._bgStyleKeys = new Set();
 
-    this.el = {
+    this.el = this._emptyElements();
+  }
+
+  _emptyElements() {
+    return {
       box: null,
       bg: null,
       popup: null,
@@ -22,22 +40,46 @@ export default class PopupView {
     if (this.el.box) return;
 
     this.el.box = this.dom.createElement({ classList: ["fly-popup"] });
-    this.el.bg = this.dom.createElement({
-      classList: ["fly-popup__background"],
-      styles: styles.bg || {},
-    });
+    this.el.bg = this.dom.createElement({ classList: ["fly-popup__background"] });
     this.el.popup = this.dom.createElement({
       classList: ["fly-popup__window"],
-      styles: styles.popup || {},
+      attributes: { role: "dialog", "aria-modal": "true" },
     });
     this.el.thumb = this.dom.createElement({ classList: ["fly-popup__thumb"] });
-    if (showCloseBtn) {
-      this.el.closeBtn = this.dom.createElement({ classList: ["fly-popup__close"] });
-    }
 
     this.el.box.appendChild(this.el.bg);
     this.el.box.appendChild(this.el.popup);
     document.body.appendChild(this.el.box);
+
+    this.el.popup.appendChild(this.el.thumb);
+    this.setCloseButtonVisible(showCloseBtn);
+    this.applyStyles(styles);
+  }
+
+  setCloseButtonVisible(show) {
+    if (!this.el.popup) return;
+
+    if (!show) {
+      if (this.el.closeBtn) {
+        this.el.closeBtn.onclick = null;
+        this.el.closeBtn.onkeydown = null;
+        this.el.closeBtn.remove();
+        this.el.closeBtn = null;
+      }
+      return;
+    }
+
+    if (!this.el.closeBtn) {
+      this.el.closeBtn = this.dom.createElement({
+        classList: ["fly-popup__close"],
+        attributes: {
+          role: "button",
+          tabindex: "0",
+          "aria-label": "Close",
+        },
+      });
+    }
+    this.el.popup.appendChild(this.el.closeBtn);
   }
 
   setCloseBtnIcon(html) {
@@ -58,67 +100,82 @@ export default class PopupView {
     if (this.el.closeBtn) this.el.popup.appendChild(this.el.closeBtn);
   }
 
-  applyDirection(direction) {
+  applyStyles(styles = {}) {
+    this._replaceStyles(this.el.popup, styles.popup || {}, this._popupStyleKeys);
+    this._replaceStyles(this.el.bg, styles.bg || {}, this._bgStyleKeys);
+  }
+
+  _replaceStyles(element, styles, previousKeys) {
+    if (!element) return;
+    for (const key of previousKeys) element.style[key] = "";
+    previousKeys.clear();
+    for (const key of Object.keys(styles)) previousKeys.add(key);
+    this.dom.setStyles(element, styles);
+  }
+
+  applyDirection(direction, initial = true) {
     const box = this.el.box;
     const popup = this.el.popup;
+    if (!box || !popup) return;
 
-    box.classList.remove(
-      "fly-popup--bottom-to-top",
-      "fly-popup--top-to-bottom",
-      "fly-popup--left-to-right",
-      "fly-popup--right-to-left",
-    );
-    switch (direction) {
-      case "bottomToTop":
-        box.classList.add("fly-popup--bottom-to-top");
-        break;
-      case "topToBottom":
-        box.classList.add("fly-popup--top-to-bottom");
-        break;
-      case "leftToRight":
-        box.classList.add("fly-popup--left-to-right");
-        break;
-      case "rightToLeft":
-        box.classList.add("fly-popup--right-to-left");
-        break;
-      default: {
-        const rect = popup.getBoundingClientRect();
-        let y = window.scrollY + window.innerHeight / 2 - rect.height / 2;
-        if (y < 30) y = 30;
-        this.dom.setStyles(popup, { top: `${y}px` });
-      }
-    }
+    box.classList.remove(...DIRECTION_CLASSES);
+    const directionClass = DIRECTION_CLASS_MAP[direction];
+    if (directionClass) box.classList.add(directionClass);
+
+    popup.style.transition = "";
+    this.el.bg.style.transition = "";
+    this.el.bg.style.opacity = "";
+    popup.style.transform = directionClass && initial ? "" : "translate3d(0,0,0)";
   }
 
   animateIn(timeout = 300) {
     const popup = this.el.popup;
-    setTimeout(() => {
-      popup.style.transition = `transform ${timeout}ms`;
+    if (!popup) return;
+
+    const duration = Math.max(0, Number(timeout) || 0);
+    if (duration === 0) {
+      popup.style.transition = "none";
       popup.style.transform = "translate3d(0,0,0)";
-    }, 10);
+      return;
+    }
+
+    this._scheduleFrame(() => {
+      if (this.el.popup !== popup || !popup.isConnected) return;
+      popup.style.transition = `transform ${duration}ms`;
+      popup.style.transform = "translate3d(0,0,0)";
+    });
   }
 
   applySwipeFrame(direction, percent) {
     const popup = this.el.popup;
     const bg = this.el.bg;
+    if (!popup || !bg) return;
 
     switch (direction) {
-      case "bottomToTop":
-        popup.style.transform = `translate3d(0, ${Math.max(percent, 0)}%, 0)`;
-        bg.style.opacity = 1 - Math.max(percent, 0) / 100 + 0.1;
+      case "bottomToTop": {
+        const value = Math.min(Math.max(percent, 0), 100);
+        popup.style.transform = `translate3d(0, ${value}%, 0)`;
+        bg.style.opacity = 1 - value / 100;
         break;
-      case "topToBottom":
-        popup.style.transform = `translate3d(0, ${Math.min(Math.max(percent, -100), 0)}%, 0)`;
-        bg.style.opacity = 1 + Math.min(Math.max(percent, -100), 0) / 100 + 0.1;
+      }
+      case "topToBottom": {
+        const value = Math.min(Math.max(percent, -100), 0);
+        popup.style.transform = `translate3d(0, ${value}%, 0)`;
+        bg.style.opacity = 1 + value / 100;
         break;
-      case "leftToRight":
-        popup.style.transform = `translate3d(${Math.min(Math.max(percent, -100), 0)}%, 0, 0)`;
-        bg.style.opacity = 1 + Math.min(Math.max(percent, -100), 0) / 100 + 0.1;
+      }
+      case "leftToRight": {
+        const value = Math.min(Math.max(percent, -100), 0);
+        popup.style.transform = `translate3d(${value}%, 0, 0)`;
+        bg.style.opacity = 1 + value / 100;
         break;
-      case "rightToLeft":
-        popup.style.transform = `translate3d(${Math.max(Math.min(percent, 100), 0)}%, 0, 0)`;
-        bg.style.opacity = 1 - Math.max(Math.min(percent, 100), 0) / 100 + 0.1;
+      }
+      case "rightToLeft": {
+        const value = Math.min(Math.max(percent, 0), 100);
+        popup.style.transform = `translate3d(${value}%, 0, 0)`;
+        bg.style.opacity = 1 - value / 100;
         break;
+      }
       default:
         break;
     }
@@ -127,73 +184,144 @@ export default class PopupView {
   resetSwipeFrame(timeout = 300) {
     const popup = this.el.popup;
     const bg = this.el.bg;
+    if (!popup || !bg) return;
 
-    bg.style.transition = `opacity ${timeout}ms`;
-    setTimeout(() => (bg.style.opacity = 1), 10);
-    popup.style.transform = "translate3d(0,0,0)";
+    const duration = Math.max(0, Number(timeout) || 0);
+    const transition = duration === 0 ? "none" : `transform ${duration}ms`;
+    popup.style.transition = transition;
+    bg.style.transition = duration === 0 ? "none" : `opacity ${duration}ms`;
+
+    this._scheduleFrame(() => {
+      if (this.el.popup !== popup || this.el.bg !== bg || !popup.isConnected) return;
+      popup.style.transform = "translate3d(0,0,0)";
+      bg.style.opacity = "1";
+    });
   }
 
-  attachHandlers({ onBgClick, onCloseClick, onTouchMove, onTouchEnd }) {
+  attachHandlers({
+    onBgClick,
+    onCloseClick,
+    onPointerDown,
+    onPointerMove,
+    onPointerEnd,
+    onPointerCancel,
+    onTouchStart,
+    onTouchMove,
+    onTouchEnd,
+    onTouchCancel,
+  }) {
+    this.detachHandlers();
+    if (!this.el.bg || !this.el.thumb) return;
+
     this.el.bg.onclick = onBgClick || null;
-    if (this.el.closeBtn) this.el.closeBtn.onclick = onCloseClick || null;
-    this.el.bg.ontouchmove = onTouchMove || null;
-    this.el.bg.ontouchend = onTouchEnd || null;
-    this.el.thumb.ontouchmove = onTouchMove || null;
-    this.el.thumb.ontouchend = onTouchEnd || null;
-  }
-
-  lockBody(lock) {
-    const body = document.body;
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-
-    if (lock) {
-      this.bodyLockState = {
-        overflow: body.style.overflow,
-        paddingRight: body.style.paddingRight,
+    if (this.el.closeBtn) {
+      this.el.closeBtn.onclick = onCloseClick || null;
+      this.el.closeBtn.onkeydown = (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        onCloseClick?.(event);
       };
+    }
 
-      body.style.overflow = "hidden";
-
-      if (scrollbarWidth > 0) {
-        body.style.paddingRight = `${scrollbarWidth}px`;
+    const targets = [this.el.bg, this.el.thumb];
+    if (typeof window !== "undefined" && "PointerEvent" in window) {
+      for (const target of targets) {
+        target.onpointerdown = onPointerDown || null;
+        target.onpointermove = onPointerMove || null;
+        target.onpointerup = onPointerEnd || null;
+        target.onpointercancel = onPointerCancel || null;
       }
-
       return;
     }
 
-    body.style.overflow = this.bodyLockState.overflow;
-    body.style.paddingRight = this.bodyLockState.paddingRight;
+    for (const target of targets) {
+      target.ontouchstart = onTouchStart || null;
+      target.ontouchmove = onTouchMove || null;
+      target.ontouchend = onTouchEnd || null;
+      target.ontouchcancel = onTouchCancel || null;
+    }
+  }
+
+  detachHandlers() {
+    for (const target of [this.el.bg, this.el.thumb]) {
+      if (!target) continue;
+      target.onclick = null;
+      target.onpointerdown = null;
+      target.onpointermove = null;
+      target.onpointerup = null;
+      target.onpointercancel = null;
+      target.ontouchstart = null;
+      target.ontouchmove = null;
+      target.ontouchend = null;
+      target.ontouchcancel = null;
+    }
+    if (this.el.closeBtn) {
+      this.el.closeBtn.onclick = null;
+      this.el.closeBtn.onkeydown = null;
+    }
+  }
+
+  applyViewport(viewport) {
+    if (!this.el.box || !viewport) return;
+    this.el.box.style.setProperty("--popup-viewport-height", `${viewport.height}px`);
+    this.el.box.style.setProperty("--popup-viewport-width", `${viewport.width}px`);
+    this.el.box.style.setProperty("--popup-viewport-offset-top", `${viewport.offsetTop}px`);
+    this.el.box.style.setProperty("--popup-viewport-offset-left", `${viewport.offsetLeft}px`);
+  }
+
+  setRootZIndex(zIndex) {
+    if (this.el.box && Number.isFinite(zIndex)) this.el.box.style.zIndex = String(zIndex);
+  }
+
+  _scheduleFrame(callback) {
+    const win = typeof window === "undefined" ? null : window;
+    if (win?.requestAnimationFrame) {
+      let id = 0;
+      id = win.requestAnimationFrame(() => {
+        this._animationFrames.delete(id);
+        callback();
+      });
+      this._animationFrames.add(id);
+      return;
+    }
+
+    const id = setTimeout(() => {
+      this._timeouts.delete(id);
+      callback();
+    }, 16);
+    this._timeouts.add(id);
+  }
+
+  cancelPendingOperations() {
+    const win = typeof window === "undefined" ? null : window;
+    for (const id of this._animationFrames) win?.cancelAnimationFrame?.(id);
+    for (const id of this._timeouts) clearTimeout(id);
+    this._animationFrames.clear();
+    this._timeouts.clear();
   }
 
   remove() {
+    this.cancelPendingOperations();
+    this.detachHandlers();
+    this.hideCloseConfirm();
     this.el.box?.remove();
-    this.el = {
-      box: null,
-      bg: null,
-      popup: null,
-      thumb: null,
-      closeBtn: null,
-      confirmWrap: null,
-    };
+    this.el = this._emptyElements();
+    this._popupStyleKeys.clear();
+    this._bgStyleKeys.clear();
   }
 
   showCloseConfirm({ title, onSaveAndClose, onClose, onCancel }) {
-    if (this.el.confirmWrap?.isConnected) return;
+    if (!this.el.box || !this.el.popup || this.el.confirmWrap?.isConnected) return;
     this.el.confirmWrap = null;
-
-    const popupZIndex = Number.parseInt(window.getComputedStyle(this.el.popup).zIndex, 10);
-    const confirmZIndex = Number.isNaN(popupZIndex) ? 106 : popupZIndex + 1;
 
     const wrap = this.dom.createElement({
       classList: ["fly-popup__close-confirm"],
-      styles: { zIndex: confirmZIndex },
       children: [{ classList: ["fly-popup__close-confirm-background"] }],
     });
-    this.dom.setStyles(wrap.firstElementChild, { zIndex: confirmZIndex });
 
     const content = this.dom.createElement({
       classList: ["fly-popup__close-confirm-content"],
-      styles: { zIndex: confirmZIndex + 1 },
+      attributes: { role: "alertdialog", "aria-modal": "true" },
       children: [
         {
           classList: ["fly-popup__close-confirm-title"],
@@ -244,15 +372,10 @@ export default class PopupView {
 
     wrap.appendChild(content);
     this.el.box.appendChild(wrap);
-
-    const rect = content.getBoundingClientRect();
-    const y = window.scrollY + window.innerHeight / 2 - rect.height / 2;
-    this.dom.setStyles(content, { top: `${y}px` });
-
     wrap.onclick = (event) => {
       if (
         event.target === wrap ||
-        event.target.classList.contains("fly-popup__close-confirm-background")
+        event.target.classList?.contains("fly-popup__close-confirm-background")
       ) {
         this.hideCloseConfirm();
       }
@@ -262,6 +385,7 @@ export default class PopupView {
   }
 
   hideCloseConfirm() {
+    if (this.el.confirmWrap) this.el.confirmWrap.onclick = null;
     this.el.confirmWrap?.remove();
     this.el.confirmWrap = null;
   }
