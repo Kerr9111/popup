@@ -1,7 +1,7 @@
 {
   "name": "@vecdev/popup",
-  "version": "0.1.2",
-  "description": "Browser popup with slide gestures, close confirmation, responsive options, and iframe integration.",
+  "version": "0.2.0",
+  "description": "Generic browser popup with directional gestures, responsive sizing, stacking, and iframe support.",
   "type": "module",
   "main": "./src/index.js",
   "types": "./index.d.ts",
@@ -21,11 +21,14 @@
     "LICENSE"
   ],
   "scripts": {
-    "check": "node --check src/PopupModel.js && node --check src/PopupView.js && node --check src/PopupPresenter.js && node --check src/Popup.js && node --check src/index.js",
+    "check": "node --check src/PopupRuntime.js && node --check src/PopupModel.js && node --check src/PopupView.js && node --check src/PopupPresenter.js && node --check src/Popup.js && node --check src/index.js && node --check demo/demo.js && node --check demo/iframe.js && node --check scripts/demo-server.js",
+    "test": "node --test test/popup.test.js",
     "demo": "node scripts/demo-server.js"
   },
   "dependencies": {
-    "dom-utils-light": "^1.1.1",
+    "dom-utils-light": "^1.1.1"
+  },
+  "devDependencies": {
     "@vecdev/message-bridge": "^0.1.1"
   },
   "keywords": [
@@ -33,8 +36,7 @@
     "modal",
     "dialog",
     "iframe",
-    "swipe",
-    "firefly"
+    "swipe"
   ],
   "author": "vecdev",
   "license": "MIT",

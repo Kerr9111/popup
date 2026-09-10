@@ -3,7 +3,7 @@ import { createParentHub } from "@vecdev/message-bridge";
 
 const IFRAME_CHANNEL = "popup-demo-iframe";
 
-function content(title, text) {
+function createContent(title, text) {
   const wrapper = document.createElement("div");
   wrapper.className = "demo-card";
   wrapper.innerHTML = `
@@ -14,103 +14,92 @@ function content(title, text) {
   return wrapper;
 }
 
-function attachContentClose(popup) {
-  popup.view.el.popup.querySelector("[data-close]")?.addEventListener("click", () => popup.closePopup());
-}
-
-function show(direction = "") {
-  const popup = new Popup();
-  popup.setContent(
-    content(
-      direction || "Center",
-      "This popup is rendered from the isolated package demo.",
-    ),
+function openPopup(options = {}) {
+  const content = options.content || createContent(
+    options.direction || "center",
+    "This popup is rendered from the isolated package demo.",
   );
-  popup.showPopup({
-    swipe: { direction, timeout: 300 },
-    styles: direction ? {} : { popup: { maxWidth: "560px" } },
+  const popup = Popup.create({ content, timeout: 300, ...options });
+  content.querySelector("[data-close]")?.addEventListener("click", () => {
+    popup.closePopup().catch(console.error);
   });
-  attachContentClose(popup);
   return popup;
 }
 
-function showConfirm() {
-  const popup = new Popup();
-  popup.setContent(content("Confirm", "Click backdrop, close button, or Escape."));
-  popup.showPopup({
-    swipe: { direction: "rightToLeft", timeout: 300 },
-    closeConfirm: {
-      title: "Close this popup?",
-      close: true,
-      cancel: true,
-    },
+function show(direction = "center") {
+  return openPopup({
+    direction,
+    width: direction === "center" ? "min(560px, 100%)" : null,
   });
-  attachContentClose(popup);
 }
 
-function showNested() {
-  const parent = show("leftToRight");
+function showConfirm() {
+  openPopup({
+    content: createContent("beforeClose", "Every normal close asks for confirmation."),
+    direction: "rightToLeft",
+    beforeClose: () => window.confirm("Close this popup?"),
+  });
+}
+
+function showStack() {
+  const first = show("leftToRight");
   const button = document.createElement("button");
   button.type = "button";
-  button.textContent = "Open nested popup";
-  parent.view.el.popup.prepend(button);
+  button.textContent = "Open another popup";
+  first.contentElement.prepend(button);
   button.addEventListener("click", () => show("bottomToTop"));
 }
 
 function showLong() {
-  const popup = new Popup();
-  const wrapper = content("Long content", "Scroll inside the popup area if your layout constrains it.");
-  for (let i = 1; i <= 20; i += 1) {
-    const p = document.createElement("p");
-    p.textContent = `Paragraph ${i}. Repeated content for layout checks.`;
-    wrapper.appendChild(p);
+  const content = createContent("Long content", "Only the content area scrolls.");
+  for (let index = 1; index <= 30; index += 1) {
+    const paragraph = document.createElement("p");
+    paragraph.textContent = `Paragraph ${index}. Repeated content for scroll checks.`;
+    content.appendChild(paragraph);
   }
-  popup.setContent(wrapper);
-  popup.showPopup({
-    swipe: { direction: "bottomToTop", timeout: 300 },
-    styles: { popup: { overflow: "auto" } },
+  openPopup({
+    content,
+    direction: "bottomToTop",
+    height: "min(680px, 90%)",
   });
-  attachContentClose(popup);
 }
 
 function showWithoutCloseButton() {
-  const popup = new Popup();
-  popup.setContent(
-    content(
+  openPopup({
+    content: createContent(
       "Without close button",
-      "Use this content button, backdrop, Escape, or swipe to close.",
+      "Use the content button, backdrop, Escape, or thumb swipe.",
     ),
-  );
-  popup.showPopup({
-    swipe: { direction: "bottomToTop", timeout: 300 },
-    showCloseBtn: false,
+    direction: "bottomToTop",
+    showCloseButton: false,
   });
-  attachContentClose(popup);
 }
 
 function showIframe() {
-  const popup = new Popup();
   const iframe = document.createElement("iframe");
   const hub = createParentHub({ channel: IFRAME_CHANNEL });
+  let unregister = () => {};
+  let offClose = () => {};
 
   iframe.className = "demo-iframe";
   iframe.src = "./iframe.html";
   iframe.title = "Popup iframe demo";
 
-  popup.setContent(iframe);
-  popup.showPopup({
-    swipe: { direction: "rightToLeft", timeout: 300 },
-    callback: () => {
+  const popup = Popup.create({
+    content: iframe,
+    direction: "rightToLeft",
+    width: "min(720px, 100%)",
+    onClose: () => {
       unregister();
       offClose();
       hub.destroy();
     },
   });
 
-  const unregister = hub.register("popup-demo", iframe);
-  const offClose = hub.on("close", (_payload, meta) => {
+  unregister = hub.register("popup-demo", iframe);
+  offClose = hub.on("close", (_payload, meta) => {
     if (meta.source !== iframe.contentWindow) return;
-    popup.closePopup();
+    popup.closePopup().catch(console.error);
   });
 }
 
@@ -119,10 +108,10 @@ document.addEventListener("click", (event) => {
   if (!button) return;
 
   const demo = button.dataset.demo;
-  if (demo === "center") show("");
+  if (demo === "center") show();
   else if (demo === "confirm") showConfirm();
   else if (demo === "iframe") showIframe();
-  else if (demo === "nested") showNested();
+  else if (demo === "nested") showStack();
   else if (demo === "long") showLong();
   else if (demo === "withoutCloseButton") showWithoutCloseButton();
   else show(demo);

@@ -1,55 +1,58 @@
-export type PopupDirection = "bottomToTop" | "topToBottom" | "leftToRight" | "rightToLeft" | "";
+export type PopupDirection =
+  | "center"
+  | "leftToRight"
+  | "rightToLeft"
+  | "topToBottom"
+  | "bottomToTop";
 
-export interface PopupButtonConfig {
-  tag?: string;
-  classList?: string[];
-  props?: {
-    textContent?: string;
-    [key: string]: unknown;
-  };
-  events?: {
-    click?: EventListener;
-    [key: string]: EventListener | undefined;
-  };
+export type PopupLifecycle = "idle" | "opening" | "open" | "closing" | "destroyed";
+
+export interface PopupContext {
+  popup: Popup;
 }
 
-export interface PopupOptions {
-  content?: string | HTMLElement;
-  swipe?: {
-    direction?: PopupDirection;
-    timeout?: number;
-  };
-  styles?: {
-    popup?: Partial<CSSStyleDeclaration> | Record<string, string | number>;
-    bg?: Partial<CSSStyleDeclaration> | Record<string, string | number>;
-  };
-  data?: Record<string, unknown>;
-  responsive?: Record<number, Partial<PopupOptions>>;
-  showCloseBtn?: boolean;
-  closeConfirm?: {
-    title?: string;
-    close?: boolean;
-    saveAndClose?: boolean;
-    cancel?: boolean;
-  };
-  lockClose?: boolean;
-  callback?: () => void;
+export interface PopupCloseContext extends PopupContext {
+  forced: boolean;
+}
+
+export interface PopupResponsiveOptions {
+  direction?: PopupDirection;
+  timeout?: number;
+  width?: string | null;
+  maxWidth?: string | null;
+  height?: string | null;
+  maxHeight?: string | null;
+  zIndex?: number | null;
+  showCloseButton?: boolean;
+  closeButtonLabel?: string;
+  closeOnEscape?: boolean;
+  closeOnBackdrop?: boolean;
+  scrollLock?: boolean;
+}
+
+export interface PopupOptions extends PopupResponsiveOptions {
+  content?: HTMLElement;
+  beforeClose?: ((context: PopupContext) => boolean | Promise<boolean>) | null;
+  onOpen?: ((context: PopupContext) => void) | null;
+  onClose?: ((context: PopupCloseContext) => void) | null;
+  responsive?: Record<number, PopupResponsiveOptions> | null;
 }
 
 export default class Popup {
+  constructor(options?: PopupOptions);
+
   static create(options?: PopupOptions): Popup;
-  setContent(content: string | HTMLElement): void;
-  setCloseBtnIcon(): void;
-  showPopup(options?: PopupOptions): void;
-  closePopup(closeConfirmOption?: PopupOptions["closeConfirm"] | null): void;
-  tryClose(confirmOpt?: PopupOptions["closeConfirm"] | null): void;
+
+  readonly isOpen: boolean;
+  readonly lifecycle: PopupLifecycle;
+  readonly element: HTMLElement | null;
+  readonly panelElement: HTMLElement | null;
+  readonly contentElement: HTMLElement | null;
+
+  setContent(content: HTMLElement): this;
+  showPopup(options?: PopupOptions): this;
+  closePopup(): Promise<boolean>;
   forceRemove(): void;
-  setSmartPopup(options?: {
-    title?: string;
-    description?: string;
-    btns?: PopupButtonConfig[];
-  }): HTMLElement;
 }
 
 export { Popup };
-export const activePopups: Popup[];
