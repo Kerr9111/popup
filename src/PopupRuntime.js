@@ -241,5 +241,3 @@ export function releaseBodyLock(owner, runtime = getPopupRuntime()) {
   }
   if (restoreError) throw restoreError;
 }
-
-export const activePopups = getPopupRuntime().stack;

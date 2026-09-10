@@ -17,7 +17,7 @@ class FakeEventTarget {
     event.currentTarget = this;
     for (const callback of [...(this.listeners.get(event.type) || [])]) callback(event);
     this[`on${event.type}`]?.(event);
-    return true;
+    return !event.defaultPrevented;
   }
 }
 
@@ -37,6 +37,13 @@ class FakeClassList {
   contains(className) {
     return this.values.has(className);
   }
+
+  toggle(className, force) {
+    const enabled = force === undefined ? !this.contains(className) : Boolean(force);
+    if (enabled) this.add(className);
+    else this.remove(className);
+    return enabled;
+  }
 }
 
 class FakeStyle {
@@ -52,11 +59,18 @@ class FakeStyle {
   getPropertyValue(name) {
     return this[name] || "";
   }
+
+  removeProperty(name) {
+    const previous = this.getPropertyValue(name);
+    delete this[name];
+    return previous;
+  }
 }
 
 export class FakeElement extends FakeEventTarget {
   constructor(tag = "div") {
     super();
+    this.nodeType = 1;
     this.tagName = tag.toUpperCase();
     this.children = [];
     this.parentNode = null;
@@ -64,7 +78,11 @@ export class FakeElement extends FakeEventTarget {
     this.style = new FakeStyle();
     this.attributes = new Map();
     this.textContent = "";
+    this.type = "";
+    this.clientWidth = 400;
+    this.clientHeight = 600;
     this._innerHTML = "";
+    this._capturedPointerId = null;
   }
 
   set className(value) {
@@ -134,7 +152,7 @@ export class FakeElement extends FakeEventTarget {
   querySelector(selector) {
     const matches = (element) => {
       if (selector.startsWith(".")) return element.classList.contains(selector.slice(1));
-      return false;
+      return element.tagName.toLowerCase() === selector.toLowerCase();
     };
     const queue = [...this.children];
     while (queue.length) {
@@ -145,7 +163,20 @@ export class FakeElement extends FakeEventTarget {
     return null;
   }
 
-  setPointerCapture() {}
+  getBoundingClientRect() {
+    return {
+      width: this.clientWidth,
+      height: this.clientHeight,
+      top: 0,
+      left: 0,
+      right: this.clientWidth,
+      bottom: this.clientHeight,
+    };
+  }
+
+  setPointerCapture(pointerId) {
+    this._capturedPointerId = pointerId;
+  }
 }
 
 class FakeDocument extends FakeEventTarget {
@@ -235,6 +266,7 @@ export function installDom(options = {}) {
 export function event(type, values = {}) {
   return {
     type,
+    timeStamp: 0,
     defaultPrevented: false,
     preventDefault() {
       this.defaultPrevented = true;

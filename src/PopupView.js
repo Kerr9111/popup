@@ -1,6 +1,7 @@
 import DOMUtils from "dom-utils-light";
 
 const DIRECTION_CLASSES = [
+  "fly-popup--center",
   "fly-popup--bottom-to-top",
   "fly-popup--top-to-bottom",
   "fly-popup--left-to-right",
@@ -8,10 +9,18 @@ const DIRECTION_CLASSES = [
 ];
 
 const DIRECTION_CLASS_MAP = {
+  center: "fly-popup--center",
   bottomToTop: "fly-popup--bottom-to-top",
   topToBottom: "fly-popup--top-to-bottom",
   leftToRight: "fly-popup--left-to-right",
   rightToLeft: "fly-popup--right-to-left",
+};
+
+const SIZE_VARIABLES = {
+  width: "--popup-width",
+  maxWidth: "--popup-max-width",
+  height: "--popup-height",
+  maxHeight: "--popup-max-height",
 };
 
 export default class PopupView {
@@ -19,9 +28,7 @@ export default class PopupView {
     this.dom = new DOMUtils();
     this._timeouts = new Set();
     this._animationFrames = new Set();
-    this._popupStyleKeys = new Set();
-    this._bgStyleKeys = new Set();
-
+    this._motionResolvers = new Set();
     this.el = this._emptyElements();
   }
 
@@ -30,13 +37,13 @@ export default class PopupView {
       box: null,
       bg: null,
       popup: null,
+      content: null,
       thumb: null,
       closeBtn: null,
-      confirmWrap: null,
     };
   }
 
-  createSkeleton(styles = {}, showCloseBtn = true) {
+  createSkeleton(options) {
     if (this.el.box) return;
 
     this.el.box = this.dom.createElement({ classList: ["fly-popup"] });
@@ -45,24 +52,37 @@ export default class PopupView {
       classList: ["fly-popup__window"],
       attributes: { role: "dialog", "aria-modal": "true" },
     });
-    this.el.thumb = this.dom.createElement({ classList: ["fly-popup__thumb"] });
+    this.el.content = this.dom.createElement({ classList: ["fly-popup__content"] });
+    this.el.thumb = this.dom.createElement({
+      classList: ["fly-popup__thumb"],
+      attributes: { "aria-hidden": "true" },
+    });
 
+    this.el.popup.appendChild(this.el.content);
+    this.el.popup.appendChild(this.el.thumb);
     this.el.box.appendChild(this.el.bg);
     this.el.box.appendChild(this.el.popup);
     document.body.appendChild(this.el.box);
 
-    this.el.popup.appendChild(this.el.thumb);
-    this.setCloseButtonVisible(showCloseBtn);
-    this.applyStyles(styles);
+    this.setCloseButton(options.showCloseButton !== false, options.closeButtonLabel);
   }
 
-  setCloseButtonVisible(show) {
+  setContent(content) {
+    if (!this.el.content) return;
+    this.el.content.innerHTML = "";
+    this.el.content.classList.toggle(
+      "fly-popup__content--iframe",
+      content.tagName?.toLowerCase() === "iframe",
+    );
+    this.el.content.appendChild(content);
+  }
+
+  setCloseButton(show, label = "Close") {
     if (!this.el.popup) return;
 
     if (!show) {
       if (this.el.closeBtn) {
         this.el.closeBtn.onclick = null;
-        this.el.closeBtn.onkeydown = null;
         this.el.closeBtn.remove();
         this.el.closeBtn = null;
       }
@@ -71,193 +91,166 @@ export default class PopupView {
 
     if (!this.el.closeBtn) {
       this.el.closeBtn = this.dom.createElement({
+        tag: "button",
         classList: ["fly-popup__close"],
-        attributes: {
-          role: "button",
-          tabindex: "0",
-          "aria-label": "Close",
-        },
+        props: { type: "button" },
       });
+      this.el.closeBtn.innerHTML = `
+        <svg aria-hidden="true" width="50" height="50" viewBox="0 0 50 50">
+          <path d="M25 30.2308L14.3007 40.9301C13.5874 41.6434 12.7156 42 11.6853 42C10.655 42 9.78322 41.6434 9.06993 40.9301C8.35664 40.2168 8 39.345 8 38.3147C8 37.2844 8.35664 36.4126 9.06993 35.6993L19.7692 25L9.06993 14.3007C8.35664 13.5874 8 12.7156 8 11.6853C8 10.655 8.35664 9.78322 9.06993 9.06993C9.78322 8.35664 10.655 8 11.6853 8C12.7156 8 13.5874 8.35664 14.3007 9.06993L25 19.7692L35.6993 9.06993C36.4126 8.35664 37.2844 8 38.3147 8C39.345 8 40.2168 8.35664 40.9301 9.06993C41.6434 9.78322 42 10.655 42 11.6853C42 12.7156 41.6434 13.5874 40.9301 14.3007L30.2308 25L40.9301 35.6993C41.6434 36.4126 42 37.2844 42 38.3147C42 39.345 41.6434 40.2168 40.9301 40.9301C40.2168 41.6434 39.345 42 38.3147 42C37.2844 42 36.4126 41.6434 35.6993 40.9301L25 30.2308Z"/>
+        </svg>
+      `;
+      this.el.popup.appendChild(this.el.closeBtn);
     }
-    this.el.popup.appendChild(this.el.closeBtn);
+    this.el.closeBtn.setAttribute("aria-label", label || "Close");
   }
 
-  setCloseBtnIcon(html) {
-    if (this.el.closeBtn) this.el.closeBtn.innerHTML = html || "";
-  }
+  applyOptions(options, zIndex, initial = false) {
+    if (!this.el.box || !this.el.popup || !this.el.bg) return;
 
-  mountContent(content) {
-    if (!this.el.popup) return;
-
-    this.el.popup.innerHTML = "";
-    if (typeof content === "string") {
-      this.el.popup.innerHTML = content;
-    } else if (content instanceof HTMLElement) {
-      this.el.popup.appendChild(content);
+    this.el.box.style.zIndex = String(zIndex);
+    this.el.box.style.setProperty("--popup-z-index", String(zIndex));
+    this.el.box.style.setProperty("--popup-animation-duration", `${options.timeout}ms`);
+    for (const [key, variable] of Object.entries(SIZE_VARIABLES)) {
+      if (options[key] === null) this.el.box.style.removeProperty(variable);
+      else this.el.box.style.setProperty(variable, options[key]);
     }
 
-    this.el.popup.appendChild(this.el.thumb);
-    if (this.el.closeBtn) this.el.popup.appendChild(this.el.closeBtn);
+    this.setCloseButton(options.showCloseButton !== false, options.closeButtonLabel);
+    this.applyDirection(options.direction, initial);
   }
 
-  applyStyles(styles = {}) {
-    this._replaceStyles(this.el.popup, styles.popup || {}, this._popupStyleKeys);
-    this._replaceStyles(this.el.bg, styles.bg || {}, this._bgStyleKeys);
-  }
+  applyDirection(direction, initial = false) {
+    if (!this.el.box || !this.el.popup || !this.el.bg) return;
 
-  _replaceStyles(element, styles, previousKeys) {
-    if (!element) return;
-    for (const key of previousKeys) element.style[key] = "";
-    previousKeys.clear();
-    for (const key of Object.keys(styles)) previousKeys.add(key);
-    this.dom.setStyles(element, styles);
-  }
-
-  applyDirection(direction, initial = true) {
-    const box = this.el.box;
-    const popup = this.el.popup;
-    if (!box || !popup) return;
-
-    box.classList.remove(...DIRECTION_CLASSES);
-    const directionClass = DIRECTION_CLASS_MAP[direction];
-    if (directionClass) box.classList.add(directionClass);
-
-    popup.style.transition = "";
+    this.cancelPendingOperations();
+    this.el.box.classList.remove(...DIRECTION_CLASSES);
+    this.el.box.classList.add(DIRECTION_CLASS_MAP[direction]);
+    this.el.popup.style.transition = "";
     this.el.bg.style.transition = "";
-    this.el.bg.style.opacity = "";
-    popup.style.transform = directionClass && initial ? "" : "translate3d(0,0,0)";
-  }
 
-  animateIn(timeout = 300) {
-    const popup = this.el.popup;
-    if (!popup) return;
-
-    const duration = Math.max(0, Number(timeout) || 0);
-    if (duration === 0) {
-      popup.style.transition = "none";
-      popup.style.transform = "translate3d(0,0,0)";
+    if (initial) {
+      this.el.popup.style.transform = "";
+      this.el.popup.style.opacity = "";
+      this.el.bg.style.opacity = "";
       return;
     }
 
+    this._applyOpenState();
+  }
+
+  animateIn(timeout) {
+    if (!this.el.popup || !this.el.bg) return;
+    const duration = normalizeDuration(timeout);
+    if (duration === 0) {
+      this.el.popup.style.transition = "none";
+      this.el.bg.style.transition = "none";
+      this._applyOpenState();
+      return;
+    }
+
+    this.el.popup.style.transition = `transform ${duration}ms, opacity ${duration}ms`;
+    this.el.bg.style.transition = `opacity ${duration}ms`;
+    const popup = this.el.popup;
     this._scheduleFrame(() => {
       if (this.el.popup !== popup || !popup.isConnected) return;
-      popup.style.transition = `transform ${duration}ms`;
-      popup.style.transform = "translate3d(0,0,0)";
+      this._applyOpenState();
     });
   }
 
-  applySwipeFrame(direction, percent) {
-    const popup = this.el.popup;
-    const bg = this.el.bg;
-    if (!popup || !bg) return;
+  animateOut(timeout, direction) {
+    this.cancelPendingOperations();
+    if (!this.el.popup || !this.el.bg) return Promise.resolve();
 
-    switch (direction) {
-      case "bottomToTop": {
-        const value = Math.min(Math.max(percent, 0), 100);
-        popup.style.transform = `translate3d(0, ${value}%, 0)`;
-        bg.style.opacity = 1 - value / 100;
-        break;
-      }
-      case "topToBottom": {
-        const value = Math.min(Math.max(percent, -100), 0);
-        popup.style.transform = `translate3d(0, ${value}%, 0)`;
-        bg.style.opacity = 1 + value / 100;
-        break;
-      }
-      case "leftToRight": {
-        const value = Math.min(Math.max(percent, -100), 0);
-        popup.style.transform = `translate3d(${value}%, 0, 0)`;
-        bg.style.opacity = 1 + value / 100;
-        break;
-      }
-      case "rightToLeft": {
-        const value = Math.min(Math.max(percent, 0), 100);
-        popup.style.transform = `translate3d(${value}%, 0, 0)`;
-        bg.style.opacity = 1 - value / 100;
-        break;
-      }
-      default:
-        break;
+    const duration = normalizeDuration(timeout);
+    this.el.popup.style.transition = duration === 0
+      ? "none"
+      : `transform ${duration}ms, opacity ${duration}ms`;
+    this.el.bg.style.transition = duration === 0 ? "none" : `opacity ${duration}ms`;
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const complete = () => {
+        if (settled) return;
+        settled = true;
+        this._motionResolvers.delete(complete);
+        resolve();
+      };
+      this._motionResolvers.add(complete);
+
+      const start = () => {
+        this._applyClosedState(direction);
+        if (duration === 0) complete();
+        else this._scheduleTimeout(complete, duration);
+      };
+
+      if (duration === 0) start();
+      else this._scheduleFrame(start);
+    });
+  }
+
+  applySwipeOffset(direction, distance) {
+    if (!this.el.popup || !this.el.bg) return;
+    const axisSize = this.getAxisSize(direction);
+    const signedDistance = getClosingDistance(direction, distance);
+    const progress = Math.min(Math.max(signedDistance / axisSize, 0), 1);
+    const percent = progress * 100;
+
+    this.el.popup.style.transition = "none";
+    this.el.bg.style.transition = "none";
+    this.el.bg.style.opacity = String(1 - progress);
+
+    if (direction === "bottomToTop") {
+      this.el.popup.style.transform = `translate3d(0, ${percent}%, 0)`;
+    } else if (direction === "topToBottom") {
+      this.el.popup.style.transform = `translate3d(0, ${-percent}%, 0)`;
+    } else if (direction === "leftToRight") {
+      this.el.popup.style.transform = `translate3d(${-percent}%, 0, 0)`;
+    } else if (direction === "rightToLeft") {
+      this.el.popup.style.transform = `translate3d(${percent}%, 0, 0)`;
     }
   }
 
-  resetSwipeFrame(timeout = 300) {
-    const popup = this.el.popup;
-    const bg = this.el.bg;
-    if (!popup || !bg) return;
+  resetSwipe(timeout) {
+    this.cancelPendingOperations();
+    if (!this.el.popup || !this.el.bg) return;
+    const duration = normalizeDuration(timeout);
+    this.el.popup.style.transition = duration === 0
+      ? "none"
+      : `transform ${duration}ms, opacity ${duration}ms`;
+    this.el.bg.style.transition = duration === 0 ? "none" : `opacity ${duration}ms`;
 
-    const duration = Math.max(0, Number(timeout) || 0);
-    const transition = duration === 0 ? "none" : `transform ${duration}ms`;
-    popup.style.transition = transition;
-    bg.style.transition = duration === 0 ? "none" : `opacity ${duration}ms`;
-
-    this._scheduleFrame(() => {
-      if (this.el.popup !== popup || this.el.bg !== bg || !popup.isConnected) return;
-      popup.style.transform = "translate3d(0,0,0)";
-      bg.style.opacity = "1";
-    });
+    if (duration === 0) this._applyOpenState();
+    else this._scheduleFrame(() => this._applyOpenState());
   }
 
-  attachHandlers({
-    onBgClick,
-    onCloseClick,
-    onPointerDown,
-    onPointerMove,
-    onPointerEnd,
-    onPointerCancel,
-    onTouchStart,
-    onTouchMove,
-    onTouchEnd,
-    onTouchCancel,
-  }) {
+  getAxisSize(direction) {
+    const rect = this.el.popup?.getBoundingClientRect?.();
+    const horizontal = direction === "leftToRight" || direction === "rightToLeft";
+    const size = horizontal ? rect?.width : rect?.height;
+    return Math.max(1, size || (horizontal ? window.innerWidth : window.innerHeight));
+  }
+
+  attachHandlers({ onBackdropClick, onCloseClick, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }) {
     this.detachHandlers();
     if (!this.el.bg || !this.el.thumb) return;
 
-    this.el.bg.onclick = onBgClick || null;
-    if (this.el.closeBtn) {
-      this.el.closeBtn.onclick = onCloseClick || null;
-      this.el.closeBtn.onkeydown = (event) => {
-        if (event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault();
-        onCloseClick?.(event);
-      };
-    }
-
-    const targets = [this.el.bg, this.el.thumb];
-    if (typeof window !== "undefined" && "PointerEvent" in window) {
-      for (const target of targets) {
-        target.onpointerdown = onPointerDown || null;
-        target.onpointermove = onPointerMove || null;
-        target.onpointerup = onPointerEnd || null;
-        target.onpointercancel = onPointerCancel || null;
-      }
-      return;
-    }
-
-    for (const target of targets) {
-      target.ontouchstart = onTouchStart || null;
-      target.ontouchmove = onTouchMove || null;
-      target.ontouchend = onTouchEnd || null;
-      target.ontouchcancel = onTouchCancel || null;
-    }
+    this.el.bg.onclick = onBackdropClick || null;
+    this.el.thumb.onpointerdown = onPointerDown || null;
+    this.el.thumb.onpointermove = onPointerMove || null;
+    this.el.thumb.onpointerup = onPointerUp || null;
+    this.el.thumb.onpointercancel = onPointerCancel || null;
+    if (this.el.closeBtn) this.el.closeBtn.onclick = onCloseClick || null;
   }
 
   detachHandlers() {
-    for (const target of [this.el.bg, this.el.thumb]) {
-      if (!target) continue;
-      target.onclick = null;
-      target.onpointerdown = null;
-      target.onpointermove = null;
-      target.onpointerup = null;
-      target.onpointercancel = null;
-      target.ontouchstart = null;
-      target.ontouchmove = null;
-      target.ontouchend = null;
-      target.ontouchcancel = null;
-    }
-    if (this.el.closeBtn) {
-      this.el.closeBtn.onclick = null;
-      this.el.closeBtn.onkeydown = null;
+    if (this.el.bg) this.el.bg.onclick = null;
+    if (this.el.closeBtn) this.el.closeBtn.onclick = null;
+    if (this.el.thumb) {
+      this.el.thumb.onpointerdown = null;
+      this.el.thumb.onpointermove = null;
+      this.el.thumb.onpointerup = null;
+      this.el.thumb.onpointercancel = null;
     }
   }
 
@@ -269,8 +262,48 @@ export default class PopupView {
     this.el.box.style.setProperty("--popup-viewport-offset-left", `${viewport.offsetLeft}px`);
   }
 
-  setRootZIndex(zIndex) {
-    if (this.el.box && Number.isFinite(zIndex)) this.el.box.style.zIndex = String(zIndex);
+  cancelPendingOperations() {
+    const win = typeof window === "undefined" ? null : window;
+    for (const id of this._animationFrames) win?.cancelAnimationFrame?.(id);
+    for (const id of this._timeouts) clearTimeout(id);
+    this._animationFrames.clear();
+    this._timeouts.clear();
+
+    const resolvers = [...this._motionResolvers];
+    this._motionResolvers.clear();
+    resolvers.forEach((resolve) => resolve());
+  }
+
+  remove() {
+    this.cancelPendingOperations();
+    this.detachHandlers();
+    this.el.box?.remove();
+    this.el = this._emptyElements();
+  }
+
+  _applyOpenState() {
+    if (!this.el.popup || !this.el.bg) return;
+    this.el.popup.style.transform = "translate3d(0,0,0)";
+    this.el.popup.style.opacity = "1";
+    this.el.bg.style.opacity = "1";
+  }
+
+  _applyClosedState(direction) {
+    if (!this.el.popup || !this.el.bg) return;
+    this.el.bg.style.opacity = "0";
+    this.el.popup.style.opacity = direction === "center" ? "0" : "1";
+
+    if (direction === "bottomToTop") {
+      this.el.popup.style.transform = "translate3d(0,100%,0)";
+    } else if (direction === "topToBottom") {
+      this.el.popup.style.transform = "translate3d(0,-100%,0)";
+    } else if (direction === "leftToRight") {
+      this.el.popup.style.transform = "translate3d(-100%,0,0)";
+    } else if (direction === "rightToLeft") {
+      this.el.popup.style.transform = "translate3d(100%,0,0)";
+    } else {
+      this.el.popup.style.transform = "scale(0.98)";
+    }
   }
 
   _scheduleFrame(callback) {
@@ -284,109 +317,24 @@ export default class PopupView {
       this._animationFrames.add(id);
       return;
     }
+    this._scheduleTimeout(callback, 16);
+  }
 
+  _scheduleTimeout(callback, timeout) {
     const id = setTimeout(() => {
       this._timeouts.delete(id);
       callback();
-    }, 16);
+    }, timeout);
     this._timeouts.add(id);
   }
+}
 
-  cancelPendingOperations() {
-    const win = typeof window === "undefined" ? null : window;
-    for (const id of this._animationFrames) win?.cancelAnimationFrame?.(id);
-    for (const id of this._timeouts) clearTimeout(id);
-    this._animationFrames.clear();
-    this._timeouts.clear();
-  }
+function normalizeDuration(timeout) {
+  return Math.max(0, Number(timeout) || 0);
+}
 
-  remove() {
-    this.cancelPendingOperations();
-    this.detachHandlers();
-    this.hideCloseConfirm();
-    this.el.box?.remove();
-    this.el = this._emptyElements();
-    this._popupStyleKeys.clear();
-    this._bgStyleKeys.clear();
-  }
-
-  showCloseConfirm({ title, onSaveAndClose, onClose, onCancel }) {
-    if (!this.el.box || !this.el.popup || this.el.confirmWrap?.isConnected) return;
-    this.el.confirmWrap = null;
-
-    const wrap = this.dom.createElement({
-      classList: ["fly-popup__close-confirm"],
-      children: [{ classList: ["fly-popup__close-confirm-background"] }],
-    });
-
-    const content = this.dom.createElement({
-      classList: ["fly-popup__close-confirm-content"],
-      attributes: { role: "alertdialog", "aria-modal": "true" },
-      children: [
-        {
-          classList: ["fly-popup__close-confirm-title"],
-          props: {
-            textContent: title || "Are you sure you want to close this window?",
-          },
-        },
-      ],
-    });
-
-    const createButton = (text, classList, handler) =>
-      this.dom.createElement({
-        tag: "span",
-        classList,
-        props: { textContent: text },
-        events: { click: handler },
-      });
-
-    if (onSaveAndClose) {
-      content.appendChild(
-        createButton(
-          "Save",
-          ["fly-popup__button", "fly-popup__button--blue", "fly-popup__confirm-button"],
-          onSaveAndClose,
-        ),
-      );
-    }
-
-    if (onClose) {
-      content.appendChild(
-        createButton(
-          "Close",
-          ["fly-popup__button", "fly-popup__button--red", "fly-popup__confirm-button"],
-          onClose,
-        ),
-      );
-    }
-
-    if (onCancel) {
-      content.appendChild(
-        createButton(
-          "Back",
-          ["fly-popup__button", "fly-popup__button--gray", "fly-popup__confirm-button"],
-          onCancel,
-        ),
-      );
-    }
-
-    wrap.appendChild(content);
-    this.el.box.appendChild(wrap);
-    wrap.onclick = (event) => {
-      if (
-        event.target === wrap ||
-        event.target.classList?.contains("fly-popup__close-confirm-background")
-      ) {
-        this.hideCloseConfirm();
-      }
-    };
-
-    this.el.confirmWrap = wrap;
-  }
-
-  hideCloseConfirm() {
-    if (this.el.confirmWrap) this.el.confirmWrap.onclick = null;
-    this.el.confirmWrap?.remove();
-    this.el.confirmWrap = null;
-  }
+function getClosingDistance(direction, distance) {
+  if (direction === "bottomToTop" || direction === "rightToLeft") return distance;
+  if (direction === "topToBottom" || direction === "leftToRight") return -distance;
+  return 0;
 }

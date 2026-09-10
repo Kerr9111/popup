@@ -1,381 +1,274 @@
 # @vecdev/popup
 
-Dependency-light browser popup with four slide directions, touch gestures,
-close confirmation, nested popup stacking, responsive options, and iframe
-integration.
+Независимый ESM-компонент popup/dialog для браузера. Пакет поддерживает пять
+режимов размещения, свайп с отдельной gesture-zone, несколько открытых окон,
+responsive-настройки, блокировку прокрутки страницы и full-height iframe.
 
-The package is an ESM module and ships both SCSS source and compiled CSS.
+Пакет поставляет исходный SCSS и собранный CSS.
 
-## Installation
+## Установка
 
 ```bash
 npm i @vecdev/popup
 ```
 
-Import the JavaScript API:
-
 ```js
 import Popup from "@vecdev/popup";
-```
-
-Import compiled CSS from a JavaScript entry:
-
-```js 
 import "@vecdev/popup/styles/popup.css";
 ```
 
-Or include the SCSS source in your application styles:
+SCSS можно подключить напрямую:
 
 ```scss
 @use "@vecdev/popup/styles/popup.scss";
 ```
 
-## Basic Usage
+## Быстрый старт
 
 ```js
-import Popup from "@vecdev/popup";
-import "@vecdev/popup/styles/popup.css";
+const content = document.createElement("section");
+content.textContent = "Popup content";
 
-const content = document.createElement("div");
-content.innerHTML = `
-  <h2 class="fly-popup__title">Popup title</h2>
-  <p>Popup content.</p>
-`;
-
-const popup = new Popup();
-popup.setContent(content);
-popup.showPopup({
-  swipe: {
-    direction: "rightToLeft",
-    timeout: 300,
-  },
+const popup = new Popup({
+  content,
+  direction: "rightToLeft",
+  width: "min(560px, 100%)",
 });
+
+popup.showPopup();
 ```
 
-`setContent()` accepts either an `HTMLElement` or an HTML string.
+Также доступна фабрика, сразу открывающая popup:
 
-## Factory Usage
+```js
+const popup = Popup.create({ content, direction: "bottomToTop" });
+```
 
-`Popup.create()` creates, configures, and opens an instance immediately:
+`content` и `setContent()` принимают только `HTMLElement`. Строки HTML не
+поддерживаются: создание, очистка и экранирование разметки остаются под
+контролем приложения.
+
+## Lifecycle
+
+Экземпляр одноразовый:
+
+```text
+idle -> opening -> open -> closing -> destroyed
+```
+
+После успешного `closePopup()` или `forceRemove()` экземпляр уничтожен. Для
+следующего окна создайте новый `Popup`. Вызов `showPopup()` для уничтоженного
+экземпляра бросает понятную ошибку.
+
+`setContent()` можно использовать до открытия или для замены контента уже
+открытого окна. После уничтожения метод недоступен.
+
+## Направления
+
+`direction` описывает направление появления:
+
+- `leftToRight` — окно слева, появляется вправо, закрывается свайпом влево;
+- `rightToLeft` — окно справа, появляется влево, закрывается свайпом вправо;
+- `topToBottom` — окно сверху, появляется вниз, закрывается свайпом вверх;
+- `bottomToTop` — окно снизу, появляется вверх, закрывается свайпом вниз;
+- `center` — окно по центру, без swipe-to-close.
+
+Свайп начинается только на `.fly-popup__thumb`. Визуальная полоска рисуется
+через `::before`, а реальная hit-area заметно больше (48–64 px). Backdrop и
+контент не являются gesture targets. Закрытие происходит по достаточной
+дистанции либо по быстрому направленному flick; короткий жест и
+`pointercancel` возвращают окно в открытое положение.
+
+## Закрытие
+
+`closePopup()` возвращает `Promise<boolean>`:
+
+```js
+const closed = await popup.closePopup();
+```
+
+Метод вызывает `beforeClose`, при разрешении проигрывает анимацию, полностью
+очищает DOM/runtime/body-lock и только затем вызывает `onClose`. `false` из
+`beforeClose` оставляет popup открытым. Hook может быть асинхронным:
 
 ```js
 const popup = Popup.create({
-  content: "<div class='fly-popup__title'>Created by factory</div>",
-  swipe: { direction: "bottomToTop", timeout: 300 },
-});
-```
-
-## Slide Directions
-
-The `swipe.direction` option accepts:
-
-- `"bottomToTop"` - opens from the bottom and closes by dragging down.
-- `"topToBottom"` - opens from the top and closes by dragging up.
-- `"leftToRight"` - opens from the left and closes by dragging left.
-- `"rightToLeft"` - opens from the right and closes by dragging right.
-- `""` - displays a centered popup without a slide direction.
-
-On touch devices the popup follows the gesture. Releasing before the 10% close
-threshold returns it to the open position. Side popups expose a narrow drag
-handle at the window edge; this handle remains available when the content is an
-iframe, because touch events do not bubble out of an iframe document.
-
-## Closing
-
-Use `closePopup()` for the normal close flow:
-
-```js
-closeButton.addEventListener("click", () => popup.closePopup());
-```
-
-It respects the `lockClose` and `closeConfirm` options configured by
-`showPopup()`. Pass an explicit close-confirm object to override the current
-configuration:
-
-```js
-popup.closePopup({
-  title: "Close without saving?",
-  close: true,
-  cancel: true,
-});
-```
-
-Use `forceRemove()` only when the popup must be removed without confirmation:
-
-```js
-popup.forceRemove();
-```
-
-The close button, backdrop, Escape key, content controls, and swipe gestures all
-use the same normal close flow. When several popups are open, Escape affects
-only the visually topmost instance. Set `closeOnEscape: false` to make the
-topmost popup ignore Escape without closing a popup below it, or
-`closeOnBackdrop: false` to disable backdrop closing.
-
-`forceRemove()` is idempotent. Internal DOM, timers, listeners, stack state, and
-body locking are cleaned before `callback` or `onClose` runs, including when a
-close callback throws or calls `forceRemove()` again.
-
-### Close Button Visibility
-
-`showCloseBtn` controls only the visual close button. It defaults to `true`.
-When set to `false`, `.fly-popup__close` is not created in the DOM; programmatic
-closing, backdrop click, Escape, iframe bridge events, and swipe gestures keep
-working as configured.
-
-```js
-popup.showPopup({
-  showCloseBtn: false,
-});
-```
-
-## Close Confirmation
-
-```js
-const popup = new Popup();
-popup.setContent("<p>Unsaved form data</p>");
-popup.showPopup({
-  swipe: { direction: "rightToLeft", timeout: 300 },
-  closeConfirm: {
-    title: "Close without saving?",
-    saveAndClose: true,
-    close: true,
-    cancel: true,
+  content,
+  beforeClose: async () => confirmChanges(),
+  onClose: ({ forced }) => {
+    // Internal cleanup здесь уже завершён.
   },
 });
 ```
 
-The flags control which actions are displayed:
+Ошибка из `beforeClose` отклоняет Promise и возвращает lifecycle в `open`.
+Ошибка из `onClose` не мешает внутренней очистке и также передаётся вызывающему
+коду.
 
-- `saveAndClose` - display a Save-labelled action and then close.
-- `close` - display the Close action.
-- `cancel` - display the Back action and keep the popup open.
+`forceRemove()` не вызывает `beforeClose` и не ждёт анимацию. Он немедленно
+очищает экземпляр, затем вызывает `onClose({ forced: true })`. Повторные вызовы
+безопасны и ничего не делают.
 
-The package only controls the action visibility and popup lifecycle. It does not
-persist application data. Use controls in your own popup content when saving
-requires an asynchronous application handler, then close the popup after that
-handler succeeds.
+Backdrop и Escape используют обычный `closePopup()`. Их можно отключить через
+`closeOnBackdrop: false` и `closeOnEscape: false`.
 
-## Iframe Content
+## Контент, scroll и iframe
 
-An iframe has its own JavaScript context. A button inside it cannot call the
-parent popup instance directly, and DOM events do not cross the iframe boundary.
-Use [`@vecdev/message-bridge`](https://www.npmjs.com/package/@vecdev/message-bridge)
-to send a close event to the parent page.
+Стабильная DOM-структура:
 
-Install both packages when using the bridge directly in application code:
-
-```bash
-npm i @vecdev/popup @vecdev/message-bridge
+```text
+.fly-popup
+|-- .fly-popup__background
+`-- .fly-popup__window
+    |-- .fly-popup__content
+    |-- .fly-popup__thumb
+    `-- .fly-popup__close
 ```
 
-### Parent Page
+`.fly-popup__window` — flex-контейнер с `overflow: hidden`. Обычный длинный
+контент прокручивается внутри `.fly-popup__content`, у которого заданы
+`min-height: 0`, `min-width: 0` и `overflow: auto`.
+
+Iframe, переданный как непосредственный content, автоматически получает режим
+full-height:
 
 ```js
-import Popup from "@vecdev/popup";
-import { createParentHub } from "@vecdev/message-bridge";
-import "@vecdev/popup/styles/popup.css";
+const frame = document.createElement("iframe");
+frame.src = "/form";
+frame.title = "Form";
 
-const channel = "profile-form-popup";
-const popup = new Popup();
-const iframe = document.createElement("iframe");
-const hub = createParentHub({ channel });
-
-let unregister = () => {};
-let offClose = () => {};
-
-iframe.src = "/profile/form";
-iframe.title = "Profile form";
-iframe.className = "profile-popup-frame";
-
-popup.setContent(iframe);
-popup.showPopup({
-  swipe: { direction: "rightToLeft", timeout: 300 },
-  callback: () => {
-    offClose();
-    unregister();
-    hub.destroy();
-  },
-});
-
-unregister = hub.register("profile-form", iframe);
-offClose = hub.on("close", (payload, meta) => {
-  if (meta.source !== iframe.contentWindow) return;
-
-  if (payload?.refresh) {
-    // Refresh parent data if the iframe saved something.
-  }
-
-  popup.closePopup();
+const popup = Popup.create({
+  content: frame,
+  direction: "rightToLeft",
+  width: "min(720px, 100%)",
 });
 ```
 
-Give the iframe stable dimensions in the parent application:
+Iframe занимает всю доступную область `.fly-popup__content` и прокручивается в
+собственном viewport. Pointer handlers находятся только на thumb и не
+перехватывают работу iframe. Обмен сообщениями с iframe, проверка origin и
+отписки относятся к приложению; их удобно завершать в `onClose`.
 
-```css
-.profile-popup-frame {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border: 0;
-}
-```
+## Размеры и CSS variables
 
-Checking `meta.source` prevents another frame using the same channel from
-closing this popup. For cross-origin frames, configure `allowedOrigins` and
-`targetOrigin` explicitly instead of using `"*"`.
-
-### Iframe Page
+`width`, `maxWidth`, `height`, `maxHeight` принимают CSS length string либо
+`null`. Например: `"480px"`, `"80vw"`, `"min(720px, 100%)"`, `"100%"`.
+Числа намеренно не преобразуются неявно.
 
 ```js
-import { createChildPort } from "@vecdev/message-bridge";
-
-const port = createChildPort({
-  channel: "profile-form-popup",
-  targetOrigin: window.location.origin,
+Popup.create({
+  content,
+  direction: "center",
+  width: "min(640px, 100%)",
+  maxHeight: "calc(100% - 32px)",
 });
-
-document.querySelector("[data-popup-close]")?.addEventListener("click", () => {
-  port.emit("close", {
-    refresh: true,
-    reason: "saved",
-  });
-});
-
-window.addEventListener("pagehide", () => port.destroy(), { once: true });
 ```
 
-Example iframe markup:
+Публичные generic variables:
 
-```html
-<button type="button" data-popup-close>Close</button>
-```
+- `--popup-z-index`;
+- `--popup-animation-duration`;
+- `--popup-width`, `--popup-max-width`;
+- `--popup-height`, `--popup-max-height`;
+- `--popup-backdrop-opacity`;
+- `--popup-viewport-width`, `--popup-viewport-height`;
+- `--popup-viewport-offset-left`, `--popup-viewport-offset-top`.
 
-## Responsive Options
+## Responsive
 
-Responsive entries are applied from the smallest matching breakpoint upward:
+Breakpoint — минимальная ширина viewport. Все совпавшие overrides применяются
+по возрастанию, не изменяя базовые options:
 
 ```js
-popup.showPopup({
-  swipe: { direction: "rightToLeft", timeout: 300 },
+Popup.create({
+  content,
+  direction: "bottomToTop",
+  width: "100%",
+  maxHeight: "85%",
   responsive: {
     768: {
-      styles: { popup: { width: "80%" } },
+      direction: "rightToLeft",
+      width: "560px",
+      height: "100%",
+      maxHeight: "100%",
     },
     1280: {
-      styles: { popup: { width: "60%" } },
+      width: "640px",
     },
   },
 });
 ```
 
-All matching entries are merged in ascending order. The options are recomputed
-from the unchanged base configuration when the viewport width changes, so
-reopening an instance at a different width does not retain a stale responsive
-override.
+При resize открытого popup direction, размеры, z-index и close/scroll options
+пересчитываются. Новый layout применяется сразу, без промежуточной анимации и
+без оставшихся modifier-классов.
 
-## Stacking and viewport
+## Stack, body lock и viewport
 
-Popup instances share their stack, Escape handler, viewport state, and body
-scroll lock through `globalThis[Symbol.for("@vecdev/popup/runtime/v1")]`. This
-keeps separate webpack entries or physical copies of the package coordinated
-when they run in the same window.
+Все физические копии пакета в одном browser realm используют общий runtime в
+`globalThis[Symbol.for("@vecdev/popup/runtime/v1")]`. Поэтому webpack entries
+разделяют stack, Escape handler, auto z-index и owner-based body lock.
 
-Automatic root z-index values are unique for the lifetime of the active stack.
-Use `zIndex` when a popup must participate in an application's existing layer
-system:
+Escape воздействует только на визуально верхний popup. Если у него
+`closeOnEscape: false`, нижний popup не закрывается. При закрытии окон в любом
+порядке исходные inline `overflow` и `padding-right` body восстанавливаются
+только после освобождения последнего lock owner. Для отдельного popup блокировку
+можно выключить через `scrollLock: false`.
 
-```js
-popup.showPopup({ zIndex: 5000 });
-```
+`zIndex` задаётся на корне `.fly-popup`. Без него runtime выдаёт уникальный
+уровень для каждого активного экземпляра; topmost определяется по итоговому
+z-index и порядку открытия.
 
-The highest root z-index is treated as topmost; equal values are ordered by
-open sequence. Body scroll locking is owner-based and can be disabled per popup
-with `scrollLock: false`.
-
-When `window.visualViewport` is available, the root receives current viewport
-dimensions and offsets through these CSS variables:
-
-- `--popup-viewport-height`
-- `--popup-viewport-width`
-- `--popup-viewport-offset-top`
-- `--popup-viewport-offset-left`
-
-The layout viewport is used as a fallback.
+При наличии `window.visualViewport` библиотека обновляет viewport variables по
+его размерам и offset, включая resize/scroll от browser UI или виртуальной
+клавиатуры. Иначе используются `window.innerWidth` и `window.innerHeight`.
 
 ## Options
 
 ```js
 {
-  content: HTMLElement | string,
-  swipe: {
-    direction: "bottomToTop" | "topToBottom" | "leftToRight" | "rightToLeft" | "",
-    timeout: 300
-  },
-  styles: {
-    popup: {},
-    bg: {}
-  },
-  responsive: {
-    768: { styles: { popup: { width: "80%" } } }
-  },
-  showCloseBtn: true,
-  zIndex: 5000,
+  content: HTMLElement,
+  direction: "center",
+  timeout: 300,
+  width: null,
+  maxWidth: null,
+  height: null,
+  maxHeight: null,
+  zIndex: null,
+  showCloseButton: true,
+  closeButtonLabel: "Close",
   closeOnEscape: true,
   closeOnBackdrop: true,
   scrollLock: true,
-  closeConfirm: {
-    title: "Close without saving?",
-    close: true,
-    saveAndClose: false,
-    cancel: true
-  },
-  lockClose: false,
+  beforeClose: ({ popup }) => true,
   onOpen: ({ popup }) => {},
-  onClose: ({ popup, reason, forced }) => {},
-  callback: () => {}
+  onClose: ({ popup, forced }) => {},
+  responsive: {}
 }
 ```
 
-`onClose` receives the popup, close reason, and whether removal was forced.
-The legacy `callback` remains supported and runs at the same point, after
-internal cleanup. Use either hook to unsubscribe event handlers, destroy
-message bridges, and release application resources.
+`timeout: 0` означает корректное мгновенное открытие и закрытие.
 
 ## API
 
-- `new Popup()` - create a popup instance.
-- `Popup.create(options)` - create and show a popup immediately.
-- `setContent(content)` - set an HTML string or `HTMLElement`.
-- `showPopup(options)` - mount and display the popup.
-- `closePopup(closeConfirmOption?)` - run the normal close flow.
-- `forceRemove()` - remove the popup without confirmation.
-- `setSmartPopup(options)` - create a simple confirm-like content element.
-- `isOpen` - read-only open state.
-- `element` - current root element or `null`.
-- `panelElement` - current popup window element or `null`.
-- `activePopups` - exported live array of currently open popup instances.
-
-`activePopups` is retained for compatibility. Treat it as read-only; a future
-major API will replace the mutable array with snapshot accessors.
+- `new Popup(options?)` — создать idle-экземпляр;
+- `Popup.create(options?)` — создать и сразу открыть;
+- `setContent(element)` — установить или заменить HTMLElement;
+- `showPopup(options?)` — открыть экземпляр;
+- `closePopup()` — выполнить normal close flow;
+- `forceRemove()` — немедленно уничтожить экземпляр;
+- `isOpen`, `lifecycle` — read-only состояние;
+- `element`, `panelElement`, `contentElement` — текущие DOM-узлы или `null`.
 
 ## Demo
-
-Clone the repository and install dependencies:
 
 ```bash
 npm install
 npm run demo
 ```
 
-Open `http://localhost:4173/demo/`.
-
-The playground includes centered and directional popups, close confirmation,
-nested windows, long content, mobile swipe behavior, and a right-side iframe
-that closes itself through `@vecdev/message-bridge`.
-
-Do not open `demo/index.html` through `file://`: browser security rules block ES
-modules, import maps, and iframe communication for local file URLs.
+Откройте `http://localhost:4173/demo/`. Через `file://` ESM/import map и iframe
+работать не будут.
 
 ## License
 

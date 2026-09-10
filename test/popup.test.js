@@ -1,20 +1,17 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
-
-import Popup, { activePopups } from "../src/index.js";
+import Popup, * as popupModule from "../src/index.js";
 import { getPopupRuntime } from "../src/PopupRuntime.js";
-import { event, FakeElement, installDom } from "./domHarness.js";
+import { FakeElement, event, installDom } from "./domHarness.js";
 
 let dom;
-const runtime = getPopupRuntime();
 
 beforeEach(() => {
-  assert.equal(runtime.stack.length, 0);
-  assert.equal(runtime.bodyLockOwners.size, 0);
   dom = installDom();
 });
 
 afterEach(() => {
+  const runtime = getPopupRuntime();
   for (const popup of [...runtime.stack]) {
     try {
       popup.forceRemove();
@@ -23,357 +20,566 @@ afterEach(() => {
   dom.restore();
 });
 
-test("forceRemove is idempotent", () => {
-  let closeCount = 0;
-  const popup = Popup.create({ callback: () => closeCount += 1 });
-
-  popup.forceRemove();
-  popup.forceRemove();
-  popup.forceRemove();
-
-  assert.equal(closeCount, 1);
-  assert.equal(popup.isOpen, false);
-  assert.equal(popup.element, null);
-  assert.equal(activePopups.length, 0);
-});
-
-test("callback errors happen after complete cleanup", () => {
-  const popup = Popup.create({
-    callback: () => {
-      throw new Error("consumer failure");
-    },
-  });
-
-  assert.throws(() => popup.forceRemove(), /consumer failure/);
-  assert.equal(popup.isOpen, false);
-  assert.equal(popup.element, null);
-  assert.equal(activePopups.length, 0);
-  assert.equal(dom.document.body.style.overflow, "");
-});
-
-test("callback can call forceRemove again", () => {
-  let closeCount = 0;
-  let popup;
-  popup = Popup.create({
-    callback: () => {
-      closeCount += 1;
-      popup.forceRemove();
-    },
-  });
-
-  popup.forceRemove();
-  assert.equal(closeCount, 1);
-  assert.equal(activePopups.length, 0);
-});
-
-test("legacy callback and onClose run once with cleaned references", () => {
-  const calls = [];
-  const popup = Popup.create({
-    callback: () => calls.push("callback"),
-    onClose: (context) => calls.push(context.reason),
-  });
-
-  popup.closePopup();
-  assert.deepEqual(calls, ["callback", "api"]);
-  assert.equal(popup.model.state.onCloseCallback, null);
-  assert.equal(popup.model.state.onClose, null);
-  assert.equal("callback" in popup.model.baseOptions, false);
-  assert.equal("onClose" in popup.model.baseOptions, false);
-});
-
-test("removal cancels pending animation frames", () => {
-  const popup = Popup.create({ swipe: { direction: "rightToLeft", timeout: 300 } });
-  const panel = popup.panelElement;
-  assert.equal(dom.window._frames.size, 1);
-
-  popup.forceRemove();
-  assert.equal(dom.window._frames.size, 0);
-  dom.window.flushAnimationFrames();
-  assert.equal(panel.style.transform || "", "");
-});
-
-test("removal cancels timeout fallback when requestAnimationFrame is unavailable", async () => {
-  dom.window.requestAnimationFrame = null;
-  const popup = Popup.create({ swipe: { direction: "rightToLeft", timeout: 300 } });
-  const panel = popup.panelElement;
-
-  popup.forceRemove();
-  await new Promise((resolve) => setTimeout(resolve, 25));
-  assert.equal(panel.style.transform || "", "");
-});
-
-for (const order of ["parent-first", "child-first"]) {
-  test(`body lock restores styles when closing ${order}`, () => {
-    dom.document.body.style.overflow = "auto";
-    dom.document.body.style.paddingRight = "7px";
-    dom.document.body._computedPaddingRight = "7px";
-
-    const first = Popup.create();
-    const second = Popup.create();
-    assert.equal(dom.document.body.style.overflow, "hidden");
-    assert.equal(dom.document.body.style.paddingRight, "31px");
-
-    const closingOrder = order === "parent-first" ? [first, second] : [second, first];
-    closingOrder[0].forceRemove();
-    assert.equal(dom.document.body.style.overflow, "hidden");
-    closingOrder[1].forceRemove();
-
-    assert.equal(dom.document.body.style.overflow, "auto");
-    assert.equal(dom.document.body.style.paddingRight, "7px");
-  });
+function content(tag = "section") {
+  return new FakeElement(tag);
 }
 
-test("physical runtime module copies share one global runtime", async () => {
-  const first = await import(`../src/PopupRuntime.js?copy=first-${Date.now()}`);
-  const second = await import(`../src/PopupRuntime.js?copy=second-${Date.now()}`);
+function open(options = {}) {
+  return Popup.create({ content: content(), timeout: 0, ...options });
+}
 
-  assert.equal(first.getPopupRuntime(), second.getPopupRuntime());
-  assert.equal(first.activePopups, second.activePopups);
+async function settle() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+test("constructor and factory expose the one-shot lifecycle", async () => {
+  const popup = new Popup({ content: content(), timeout: 0 });
+  assert.equal(popup.lifecycle, "idle");
+
+  popup.showPopup();
+  assert.equal(popup.lifecycle, "open");
+  assert.equal(await popup.closePopup(), true);
+  assert.equal(popup.lifecycle, "destroyed");
+  assert.equal(popup.element, null);
+  assert.throws(() => popup.showPopup(), /destroyed/);
+  assert.throws(() => popup.setContent(content()), /destroyed/);
 });
 
-test("Escape closes only the topmost popup", () => {
-  const first = Popup.create();
-  const second = Popup.create();
-
-  dom.document.dispatchEvent(event("keydown", { key: "Escape" }));
-  assert.equal(second.isOpen, false);
-  assert.equal(first.isOpen, true);
-
-  dom.document.dispatchEvent(event("keydown", { key: "Escape" }));
-  assert.equal(first.isOpen, false);
+test("showPopup is idempotent while the instance is active", () => {
+  const popup = open();
+  const root = popup.element;
+  popup.showPopup({ direction: "leftToRight" });
+  assert.equal(popup.element, root);
+  assert.equal(dom.document.body.children.length, 1);
 });
 
-test("runtime owns one global listener set and removes it with the last popup", () => {
-  const first = Popup.create();
-  const second = Popup.create();
-  assert.equal(dom.document.listeners.get("keydown").size, 1);
-  assert.equal(dom.window.listeners.get("resize").size, 1);
-
-  second.forceRemove();
-  assert.equal(dom.document.listeners.get("keydown").size, 1);
-  first.forceRemove();
-  assert.equal(dom.document.listeners.get("keydown").size, 0);
-  assert.equal(dom.window.listeners.get("resize").size, 0);
+test("content accepts only HTMLElement-like nodes", () => {
+  assert.throws(() => new Popup({ content: "<b>unsafe</b>" }), /HTMLElement/);
+  assert.throws(() => new Popup().setContent({}), /HTMLElement/);
+  assert.doesNotThrow(() => new Popup({ content: content() }));
 });
 
-test("topmost closeOnEscape false blocks Escape without closing lower popup", () => {
-  const first = Popup.create();
-  const second = Popup.create({ closeOnEscape: false });
-
-  dom.document.dispatchEvent(event("keydown", { key: "Escape" }));
-  assert.equal(first.isOpen, true);
-  assert.equal(second.isOpen, true);
+test("canonical DOM and accessible close button are mounted", () => {
+  const popup = open({ closeButtonLabel: "Dismiss" });
+  assert.equal(popup.element.className, "fly-popup fly-popup--center");
+  assert.equal(popup.element.children[0].className, "fly-popup__background");
+  assert.equal(popup.panelElement.className, "fly-popup__window");
+  assert.equal(popup.panelElement.getAttribute("role"), "dialog");
+  assert.equal(popup.panelElement.getAttribute("aria-modal"), "true");
+  assert.equal(popup.contentElement.className, "fly-popup__content");
+  assert.equal(popup.view.el.thumb.parentNode, popup.panelElement);
+  assert.equal(popup.view.el.closeBtn.tagName, "BUTTON");
+  assert.equal(popup.view.el.closeBtn.type, "button");
+  assert.equal(popup.view.el.closeBtn.getAttribute("aria-label"), "Dismiss");
 });
 
-test("closeOnBackdrop false keeps popup open", () => {
-  const popup = Popup.create({ closeOnBackdrop: false });
-  popup.view.el.bg.dispatchEvent(event("click"));
-  assert.equal(popup.isOpen, true);
+test("setContent replaces and detaches current content", () => {
+  const first = content();
+  const second = content("article");
+  const popup = open({ content: first });
+  assert.equal(first.parentNode, popup.contentElement);
+
+  assert.equal(popup.setContent(second), popup);
+  assert.equal(first.parentNode, null);
+  assert.equal(second.parentNode, popup.contentElement);
 });
 
-test("scrollLock false does not participate in body locking", () => {
-  const unlocked = Popup.create({ scrollLock: false });
-  assert.equal(dom.document.body.style.overflow, "");
+test("iframe content receives the dedicated full-height mode and is removed", () => {
+  const iframe = content("iframe");
+  const popup = open({ content: iframe, direction: "rightToLeft" });
+  const wrapper = popup.contentElement;
+  assert.equal(wrapper.classList.contains("fly-popup__content--iframe"), true);
+  assert.equal(wrapper.onpointerdown, undefined);
+  assert.equal(iframe.onpointerdown, undefined);
 
-  const locked = Popup.create();
-  assert.equal(dom.document.body.style.overflow, "hidden");
-  locked.forceRemove();
-  assert.equal(dom.document.body.style.overflow, "");
-  assert.equal(unlocked.isOpen, true);
+  popup.forceRemove();
+  assert.equal(iframe.isConnected, false);
+  assert.equal(popup.contentElement, null);
 });
 
-test("automatic z-index remains unique after middle removal", () => {
-  const first = Popup.create();
-  const second = Popup.create();
-  const third = Popup.create();
-  const used = [first, second, third].map((popup) => popup.element.style.zIndex);
-
-  second.forceRemove();
-  const fourth = Popup.create();
-  used.push(fourth.element.style.zIndex);
-
-  assert.equal(new Set(used).size, used.length);
-});
-
-test("explicit zIndex is applied to the root and defines topmost popup", () => {
-  const high = Popup.create({ zIndex: 5000 });
-  const automatic = Popup.create();
-  assert.equal(high.element.style.zIndex, "5000");
-
-  dom.document.dispatchEvent(event("keydown", { key: "Escape" }));
-  assert.equal(high.isOpen, false);
-  assert.equal(automatic.isOpen, true);
-});
-
-test("center and confirm positioning do not use document scroll coordinates", () => {
-  dom.window.scrollY = 900;
-  const popup = Popup.create({
-    closeConfirm: { title: "Close?", close: true, cancel: true },
-  });
-
-  assert.equal(popup.panelElement.style.top || "", "");
-  popup.closePopup();
-  const confirm = popup.view.el.confirmWrap.querySelector(".fly-popup__close-confirm-content");
-  assert.equal(confirm.style.top || "", "");
-});
-
-test("responsive options cascade and reset from immutable base options", () => {
-  const popup = Popup.create({
-    styles: { popup: { width: "50px", color: "red" } },
-    responsive: {
-      800: {
-        styles: { popup: { width: "80px" } },
-        swipe: { direction: "rightToLeft" },
-      },
-      1000: { styles: { popup: { color: "blue" } } },
+test("normal close cleans runtime and body before onClose", async () => {
+  let snapshot;
+  const popup = open({
+    onClose: ({ popup: closed, forced }) => {
+      snapshot = {
+        lifecycle: closed.lifecycle,
+        element: closed.element,
+        stackSize: getPopupRuntime().stack.length,
+        overflow: dom.document.body.style.overflow,
+        forced,
+      };
     },
   });
-  assert.equal(popup.panelElement.style.width, "80px");
-  assert.equal(popup.panelElement.style.color, "blue");
-  assert.equal(popup.element.classList.contains("fly-popup--right-to-left"), true);
 
-  dom.window.innerWidth = 700;
-  dom.window.dispatchEvent(event("resize"));
-  assert.equal(popup.panelElement.style.width, "50px");
-  assert.equal(popup.panelElement.style.color, "red");
-  assert.equal(popup.element.classList.contains("fly-popup--right-to-left"), false);
+  await popup.closePopup();
+  assert.deepEqual(snapshot, {
+    lifecycle: "destroyed",
+    element: null,
+    stackSize: 0,
+    overflow: "",
+    forced: false,
+  });
 });
 
-test("showPopup accepts content including an empty string", () => {
-  const popup = new Popup();
-  popup.showPopup({ content: "" });
-  assert.equal(popup.panelElement.innerHTML, "");
+test("forceRemove bypasses beforeClose, is immediate and idempotent", () => {
+  let beforeCalls = 0;
+  let closeCalls = 0;
+  const popup = open({
+    beforeClose: () => {
+      beforeCalls += 1;
+      return false;
+    },
+    onClose: ({ forced }) => {
+      closeCalls += 1;
+      assert.equal(forced, true);
+    },
+  });
 
   popup.forceRemove();
-  const element = new FakeElement("section");
-  popup.showPopup({ content: element });
-  assert.equal(popup.panelElement.children.includes(element), true);
+  popup.forceRemove();
+  popup.forceRemove();
+  assert.equal(beforeCalls, 0);
+  assert.equal(closeCalls, 1);
+  assert.equal(popup.lifecycle, "destroyed");
 });
 
-test("an empty popup still mounts its controls", () => {
-  const popup = Popup.create({ swipe: { direction: "bottomToTop", timeout: 0 } });
-  assert.equal(popup.view.el.thumb.isConnected, true);
-  assert.equal(popup.view.el.closeBtn.isConnected, true);
+test("cleanup remains complete when onClose throws", async () => {
+  const popup = open({ onClose: () => { throw new Error("callback failed"); } });
+  await assert.rejects(popup.closePopup(), /callback failed/);
+  assert.equal(popup.lifecycle, "destroyed");
+  assert.equal(popup.element, null);
+  assert.equal(getPopupRuntime().stack.length, 0);
+  assert.equal(dom.document.body.style.overflow, "");
 });
 
-test("timeout zero puts a directional popup into its final state immediately", () => {
-  const popup = Popup.create({ swipe: { direction: "bottomToTop", timeout: 0 } });
+test("forceRemove cleans before rethrowing an onClose exception", () => {
+  const popup = open({ onClose: () => { throw new Error("forced callback failed"); } });
+  assert.throws(() => popup.forceRemove(), /forced callback failed/);
+  assert.equal(popup.lifecycle, "destroyed");
+  assert.equal(getPopupRuntime().stack.length, 0);
+});
+
+test("forceRemove during opening cancels the pending animation frame", () => {
+  const popup = new Popup({ content: content(), timeout: 300 });
+  const animateIn = popup.view.animateIn.bind(popup.view);
+  popup.view.animateIn = (timeout) => {
+    animateIn(timeout);
+    popup.forceRemove();
+  };
+
+  popup.showPopup();
+  assert.equal(popup.lifecycle, "destroyed");
+  assert.equal(dom.window._frames.size, 0);
+  dom.window.flushAnimationFrames();
+  assert.equal(popup.element, null);
+});
+
+test("forceRemove during closing resolves the close operation without stale DOM access", async () => {
+  const popup = open({ timeout: 100 });
+  const closing = popup.closePopup();
+  dom.window.flushAnimationFrames();
+  popup.forceRemove();
+  assert.equal(await closing, true);
+  assert.equal(popup.lifecycle, "destroyed");
+  assert.equal(popup.element, null);
+  assert.equal(popup.view._timeouts.size, 0);
+  assert.equal(popup.view._animationFrames.size, 0);
+});
+
+test("forceRemove also settles a close waiting for beforeClose", async () => {
+  const popup = open({ beforeClose: () => new Promise(() => {}) });
+  const closing = popup.closePopup();
+  popup.forceRemove();
+  assert.equal(await closing, true);
+  assert.equal(popup.lifecycle, "destroyed");
+});
+
+test("beforeClose supports sync true and false", async () => {
+  const allowed = open({ beforeClose: () => true });
+  assert.equal(await allowed.closePopup(), true);
+  assert.equal(allowed.lifecycle, "destroyed");
+
+  const denied = open({ beforeClose: () => false });
+  assert.equal(await denied.closePopup(), false);
+  assert.equal(denied.lifecycle, "open");
+});
+
+test("beforeClose supports async true and false", async () => {
+  const allowed = open({ beforeClose: async () => true });
+  assert.equal(await allowed.closePopup(), true);
+
+  const denied = open({ beforeClose: async () => false });
+  assert.equal(await denied.closePopup(), false);
+  assert.equal(denied.lifecycle, "open");
+});
+
+test("beforeClose rejection restores open state", async () => {
+  const popup = open({ beforeClose: async () => { throw new Error("no decision"); } });
+  await assert.rejects(popup.closePopup(), /no decision/);
+  assert.equal(popup.lifecycle, "open");
+  assert.equal(popup.isOpen, true);
+});
+
+test("concurrent closePopup calls share one close operation", async () => {
+  let resolve;
+  const decision = new Promise((done) => { resolve = done; });
+  const popup = open({ beforeClose: () => decision });
+  const first = popup.closePopup();
+  const second = popup.closePopup();
+  assert.equal(first, second);
+  resolve(true);
+  assert.equal(await first, true);
+});
+
+test("timeout zero reaches final open and close states", async () => {
+  const popup = open({ direction: "bottomToTop" });
   assert.equal(popup.panelElement.style.transition, "none");
   assert.equal(popup.panelElement.style.transform, "translate3d(0,0,0)");
+  assert.equal(await popup.closePopup(), true);
+  assert.equal(popup.lifecycle, "destroyed");
 });
 
-test("one instance can reopen without stale responsive values", () => {
-  const popup = new Popup();
-  dom.window.innerWidth = 900;
-  popup.showPopup({
-    styles: { popup: { width: "40px" } },
-    responsive: { 800: { styles: { popup: { width: "80px" } } } },
-  });
-  assert.equal(popup.panelElement.style.width, "80px");
-  popup.forceRemove();
-
-  dom.window.innerWidth = 600;
-  popup.showPopup();
-  assert.equal(popup.panelElement.style.width, "40px");
-});
-
-test("pointer cancel resets a swipe without closing", () => {
-  const popup = Popup.create({ swipe: { direction: "rightToLeft", timeout: 100 } });
-  dom.window.flushAnimationFrames();
-  const thumb = popup.view.el.thumb;
-
-  thumb.dispatchEvent(event("pointerdown", {
-    pointerId: 1,
-    isPrimary: true,
-    clientX: 100,
-    clientY: 100,
-  }));
-  thumb.dispatchEvent(event("pointermove", {
-    pointerId: 1,
-    clientX: 300,
-    clientY: 100,
-  }));
-  assert.notEqual(popup.panelElement.style.transform, "translate3d(0,0,0)");
-
-  thumb.dispatchEvent(event("pointercancel", { pointerId: 1 }));
-  dom.window.flushAnimationFrames();
-  assert.equal(popup.isOpen, true);
-  assert.equal(popup.panelElement.style.transform, "translate3d(0,0,0)");
-});
-
-test("all four pointer directions close past the same threshold", () => {
+test("all direction modifiers are stable and close in the reverse direction", async () => {
   const cases = [
-    ["bottomToTop", 100, 100, 100, 200],
-    ["topToBottom", 100, 200, 100, 100],
-    ["leftToRight", 200, 100, 50, 100],
-    ["rightToLeft", 50, 100, 200, 100],
+    ["center", "fly-popup--center", "scale(0.98)"],
+    ["bottomToTop", "fly-popup--bottom-to-top", "translate3d(0,100%,0)"],
+    ["topToBottom", "fly-popup--top-to-bottom", "translate3d(0,-100%,0)"],
+    ["leftToRight", "fly-popup--left-to-right", "translate3d(-100%,0,0)"],
+    ["rightToLeft", "fly-popup--right-to-left", "translate3d(100%,0,0)"],
   ];
 
-  for (const [direction, startX, startY, endX, endY] of cases) {
-    const popup = Popup.create({ swipe: { direction, timeout: 0 } });
-    const thumb = popup.view.el.thumb;
-    thumb.dispatchEvent(event("pointerdown", {
-      pointerId: 1,
-      isPrimary: true,
-      clientX: startX,
-      clientY: startY,
-    }));
-    thumb.dispatchEvent(event("pointerup", {
-      pointerId: 1,
-      clientX: endX,
-      clientY: endY,
-    }));
-    assert.equal(popup.isOpen, false, direction);
+  for (const [direction, modifier, closedTransform] of cases) {
+    let panel;
+    const popup = open({
+      direction,
+      onClose: () => {
+        assert.equal(panel.style.transform, closedTransform);
+      },
+    });
+    panel = popup.panelElement;
+    assert.equal(popup.element.classList.contains(modifier), true);
+    await popup.closePopup();
   }
 });
 
-test("visualViewport values are exposed as root CSS variables", () => {
+test("invalid direction, duration and size values fail early", () => {
+  assert.throws(() => new Popup({ direction: "sideways" }), /direction/);
+  assert.throws(() => new Popup({ timeout: -1 }), /timeout/);
+  assert.throws(() => new Popup({ width: 320 }), /width/);
+  assert.throws(() => new Popup({ zIndex: Infinity }), /zIndex/);
+  assert.throws(() => new Popup({ swipe: { direction: "leftToRight" } }), /Unsupported/);
+  assert.throws(() => new Popup({ responsive: { mobile: {} } }), /breakpoint/);
+});
+
+test("sizing and z-index options are exposed on the root", () => {
+  const popup = open({
+    width: "420px",
+    maxWidth: "90%",
+    height: "70vh",
+    maxHeight: "680px",
+    zIndex: 9000,
+  });
+  assert.equal(popup.element.style.getPropertyValue("--popup-width"), "420px");
+  assert.equal(popup.element.style.getPropertyValue("--popup-max-width"), "90%");
+  assert.equal(popup.element.style.getPropertyValue("--popup-height"), "70vh");
+  assert.equal(popup.element.style.getPropertyValue("--popup-max-height"), "680px");
+  assert.equal(popup.element.style.zIndex, "9000");
+  assert.equal(popup.element.style.getPropertyValue("--popup-z-index"), "9000");
+});
+
+test("stack has unique automatic z-index and supports closing A first", async () => {
+  const first = open();
+  const second = open();
+  assert.notEqual(first.element.style.zIndex, second.element.style.zIndex);
+  assert.equal(getPopupRuntime().stack.length, 2);
+
+  await first.closePopup();
+  assert.equal(first.lifecycle, "destroyed");
+  assert.equal(second.lifecycle, "open");
+  assert.equal(dom.document.body.style.overflow, "hidden");
+
+  await second.closePopup();
+  assert.equal(dom.document.body.style.overflow, "");
+});
+
+test("stack supports closing B first and returns to A", async () => {
+  const first = open();
+  const second = open();
+  await second.closePopup();
+  assert.equal(first.lifecycle, "open");
+  assert.equal(getPopupRuntime().stack[0], first);
+  await first.closePopup();
+});
+
+test("Escape closes only the topmost popup", async () => {
+  const first = open();
+  const second = open();
+  dom.document.dispatchEvent(event("keydown", { key: "Escape" }));
+  await settle();
+  assert.equal(second.lifecycle, "destroyed");
+  assert.equal(first.lifecycle, "open");
+});
+
+test("topmost closeOnEscape false protects lower popup", async () => {
+  const first = open();
+  const second = open({ closeOnEscape: false });
+  dom.document.dispatchEvent(event("keydown", { key: "Escape" }));
+  await settle();
+  assert.equal(second.lifecycle, "open");
+  assert.equal(first.lifecycle, "open");
+});
+
+test("explicit z-index determines Escape topmost", async () => {
+  const first = open({ zIndex: 5000 });
+  const second = open({ zIndex: 4000 });
+  dom.document.dispatchEvent(event("keydown", { key: "Escape" }));
+  await settle();
+  assert.equal(first.lifecycle, "destroyed");
+  assert.equal(second.lifecycle, "open");
+});
+
+test("body lock preserves original inline state in arbitrary close order", async () => {
+  dom.document.body.style.overflow = "auto";
+  dom.document.body.style.paddingRight = "7px";
+  dom.document.body._computedPaddingRight = "7px";
+  const first = open();
+  const second = open();
+  assert.equal(dom.document.body.style.overflow, "hidden");
+  assert.equal(dom.document.body.style.paddingRight, "31px");
+
+  await first.closePopup();
+  assert.equal(dom.document.body.style.paddingRight, "31px");
+  await second.closePopup();
+  assert.equal(dom.document.body.style.overflow, "auto");
+  assert.equal(dom.document.body.style.paddingRight, "7px");
+});
+
+test("scrollLock false does not become a body-lock owner", async () => {
+  const unlocked = open({ scrollLock: false });
+  assert.equal(dom.document.body.style.overflow, "");
+  const locked = open();
+  assert.equal(dom.document.body.style.overflow, "hidden");
+  await locked.closePopup();
+  assert.equal(dom.document.body.style.overflow, "");
+  await unlocked.closePopup();
+});
+
+test("backdrop closes normally but is never a swipe target", async () => {
+  const popup = open({ direction: "bottomToTop" });
+  assert.equal(popup.view.el.bg.onpointerdown, undefined);
+  popup.view.el.bg.dispatchEvent(event("click"));
+  await settle();
+  assert.equal(popup.lifecycle, "destroyed");
+
+  const protectedPopup = open({ closeOnBackdrop: false });
+  protectedPopup.view.el.bg.dispatchEvent(event("click"));
+  await settle();
+  assert.equal(protectedPopup.lifecycle, "open");
+});
+
+test("center mode has no active swipe gesture", () => {
+  const popup = open({ direction: "center" });
+  popup.view.el.thumb.dispatchEvent(event("pointerdown", {
+    pointerId: 1,
+    isPrimary: true,
+    clientX: 10,
+    clientY: 10,
+  }));
+  assert.equal(popup.model.state.pointerId, null);
+});
+
+test("all four swipe directions close past the distance threshold", async () => {
+  const cases = [
+    ["bottomToTop", 100, 100, 100, 220],
+    ["topToBottom", 100, 220, 100, 100],
+    ["leftToRight", 220, 100, 100, 100],
+    ["rightToLeft", 100, 100, 220, 100],
+  ];
+
+  for (const [direction, startX, startY, endX, endY] of cases) {
+    const popup = open({ direction });
+    const thumb = popup.view.el.thumb;
+    thumb.dispatchEvent(event("pointerdown", {
+      pointerId: 7,
+      isPrimary: true,
+      clientX: startX,
+      clientY: startY,
+      timeStamp: 0,
+    }));
+    thumb.dispatchEvent(event("pointerup", {
+      pointerId: 7,
+      clientX: endX,
+      clientY: endY,
+      timeStamp: 400,
+    }));
+    await settle();
+    assert.equal(popup.lifecycle, "destroyed", direction);
+  }
+});
+
+test("a short fast flick closes while an insufficient drag resets", async () => {
+  const flick = open({ direction: "rightToLeft" });
+  flick.view.el.thumb.dispatchEvent(event("pointerdown", {
+    pointerId: 1, isPrimary: true, clientX: 100, clientY: 10, timeStamp: 0,
+  }));
+  flick.view.el.thumb.dispatchEvent(event("pointerup", {
+    pointerId: 1, clientX: 120, clientY: 10, timeStamp: 20,
+  }));
+  await settle();
+  assert.equal(flick.lifecycle, "destroyed");
+
+  const drag = open({ direction: "rightToLeft", timeout: 100 });
+  drag.view.el.thumb.dispatchEvent(event("pointerdown", {
+    pointerId: 2, isPrimary: true, clientX: 100, clientY: 10, timeStamp: 0,
+  }));
+  drag.view.el.thumb.dispatchEvent(event("pointerup", {
+    pointerId: 2, clientX: 150, clientY: 10, timeStamp: 500,
+  }));
+  dom.window.flushAnimationFrames();
+  assert.equal(drag.lifecycle, "open");
+  assert.equal(drag.panelElement.style.transform, "translate3d(0,0,0)");
+});
+
+test("opposite movement does not prevent default and resets", () => {
+  const popup = open({ direction: "rightToLeft", timeout: 0 });
+  const thumb = popup.view.el.thumb;
+  thumb.dispatchEvent(event("pointerdown", {
+    pointerId: 1, isPrimary: true, clientX: 100, clientY: 10,
+  }));
+  const move = event("pointermove", {
+    pointerId: 1, clientX: 50, clientY: 10,
+  });
+  thumb.dispatchEvent(move);
+  assert.equal(move.defaultPrevented, false);
+  thumb.dispatchEvent(event("pointerup", {
+    pointerId: 1, clientX: 50, clientY: 10, timeStamp: 100,
+  }));
+  assert.equal(popup.lifecycle, "open");
+  assert.equal(popup.panelElement.style.transform, "translate3d(0,0,0)");
+});
+
+test("pointerId is captured and unrelated pointers are ignored", () => {
+  const popup = open({ direction: "bottomToTop" });
+  const thumb = popup.view.el.thumb;
+  thumb.dispatchEvent(event("pointerdown", {
+    pointerId: 4, isPrimary: true, clientX: 10, clientY: 10,
+  }));
+  assert.equal(thumb._capturedPointerId, 4);
+  thumb.dispatchEvent(event("pointermove", {
+    pointerId: 5, clientX: 10, clientY: 200,
+  }));
+  assert.equal(popup.panelElement.style.transform, "translate3d(0,0,0)");
+  thumb.dispatchEvent(event("pointercancel", { pointerId: 5 }));
+  assert.equal(popup.model.state.pointerId, 4);
+});
+
+test("pointercancel returns the popup to the open state", () => {
+  const popup = open({ direction: "rightToLeft", timeout: 100 });
+  const thumb = popup.view.el.thumb;
+  thumb.dispatchEvent(event("pointerdown", {
+    pointerId: 1, isPrimary: true, clientX: 100, clientY: 100,
+  }));
+  thumb.dispatchEvent(event("pointermove", {
+    pointerId: 1, clientX: 250, clientY: 100,
+  }));
+  assert.notEqual(popup.panelElement.style.transform, "translate3d(0,0,0)");
+  thumb.dispatchEvent(event("pointercancel", { pointerId: 1 }));
+  dom.window.flushAnimationFrames();
+  assert.equal(popup.lifecycle, "open");
+  assert.equal(popup.panelElement.style.transform, "translate3d(0,0,0)");
+});
+
+test("only the topmost popup can start a thumb gesture", () => {
+  const first = open({ direction: "rightToLeft" });
+  const second = open({ direction: "bottomToTop" });
+  first.view.el.thumb.dispatchEvent(event("pointerdown", {
+    pointerId: 1, isPrimary: true, clientX: 10, clientY: 10,
+  }));
+  assert.equal(first.model.state.pointerId, null);
+  second.view.el.thumb.dispatchEvent(event("pointerdown", {
+    pointerId: 2, isPrimary: true, clientX: 10, clientY: 10,
+  }));
+  assert.equal(second.model.state.pointerId, 2);
+});
+
+test("responsive overrides cascade without mutating base options", () => {
+  dom.window.innerWidth = 1400;
+  const responsive = {
+    480: { direction: "bottomToTop", width: "100%" },
+    768: { direction: "rightToLeft", width: "560px" },
+    1280: { width: "640px" },
+  };
+  const popup = open({ direction: "center", width: "320px", responsive });
+  assert.equal(popup.element.classList.contains("fly-popup--right-to-left"), true);
+  assert.equal(popup.element.style.getPropertyValue("--popup-width"), "640px");
+  assert.equal(popup.model.baseOptions.direction, "center");
+  assert.equal(popup.model.baseOptions.width, "320px");
+
+  dom.window.innerWidth = 600;
+  dom.window.dispatchEvent(event("resize"));
+  assert.equal(popup.element.classList.contains("fly-popup--bottom-to-top"), true);
+  assert.equal(popup.element.classList.contains("fly-popup--right-to-left"), false);
+  assert.equal(popup.element.style.getPropertyValue("--popup-width"), "100%");
+
+  dom.window.innerWidth = 400;
+  dom.window.dispatchEvent(event("resize"));
+  assert.equal(popup.element.classList.contains("fly-popup--center"), true);
+  assert.equal(popup.element.style.getPropertyValue("--popup-width"), "320px");
+  assert.deepEqual(responsive[768], { direction: "rightToLeft", width: "560px" });
+});
+
+test("visualViewport values and keyboard-like changes update CSS variables", () => {
   dom.restore();
   dom = installDom({
     visualViewport: { width: 390, height: 640, offsetTop: 12, offsetLeft: 3 },
   });
-  const popup = Popup.create();
-
+  const popup = open();
   assert.equal(popup.element.style.getPropertyValue("--popup-viewport-width"), "390px");
   assert.equal(popup.element.style.getPropertyValue("--popup-viewport-height"), "640px");
   assert.equal(popup.element.style.getPropertyValue("--popup-viewport-offset-top"), "12px");
   assert.equal(popup.element.style.getPropertyValue("--popup-viewport-offset-left"), "3px");
 
-  dom.window.visualViewport.height = 520;
-  dom.window.visualViewport.offsetTop = 24;
-  dom.window.visualViewport.dispatchEvent(event("scroll"));
-  assert.equal(popup.element.style.getPropertyValue("--popup-viewport-height"), "520px");
-  assert.equal(popup.element.style.getPropertyValue("--popup-viewport-offset-top"), "24px");
+  dom.window.visualViewport.height = 500;
+  dom.window.visualViewport.offsetTop = 40;
+  dom.window.visualViewport.dispatchEvent(event("resize"));
+  assert.equal(popup.element.style.getPropertyValue("--popup-viewport-height"), "500px");
+  assert.equal(popup.element.style.getPropertyValue("--popup-viewport-offset-top"), "40px");
 });
 
-test("fallback viewport values are used without visualViewport", () => {
-  const popup = Popup.create();
+test("layout viewport is used as visualViewport fallback without scrollY", () => {
+  dom.window.scrollY = 900;
+  const popup = open();
   assert.equal(popup.element.style.getPropertyValue("--popup-viewport-width"), "1024px");
   assert.equal(popup.element.style.getPropertyValue("--popup-viewport-height"), "768px");
+  assert.equal(popup.element.style.getPropertyValue("--popup-viewport-offset-top"), "0px");
 });
 
-test("failed mount rolls back runtime, body lock, DOM and lifecycle", () => {
-  const popup = new Popup();
-  popup.setContent("content");
-  popup.view.mountContent = () => {
-    throw new Error("mount failed");
-  };
+test("shared Symbol runtime is the single stack source across module copies", async () => {
+  const popup = open();
+  const runtime = globalThis[Symbol.for("@vecdev/popup/runtime/v1")];
+  const runtimeCopy = await import(`../src/PopupRuntime.js?copy=${Date.now()}`);
+  assert.equal(runtime, getPopupRuntime());
+  assert.equal(runtime, runtimeCopy.getPopupRuntime());
+  assert.deepEqual(runtime.stack, [popup]);
+  assert.equal("activePopups" in popupModule, false);
+});
 
+test("last popup cleanup removes shared document and viewport listeners", () => {
+  const popup = open();
+  assert.equal(dom.document.listeners.get("keydown")?.size, 1);
+  assert.equal(dom.window.listeners.get("resize")?.size, 1);
+  popup.forceRemove();
+  assert.equal(dom.document.listeners.get("keydown")?.size, 0);
+  assert.equal(dom.window.listeners.get("resize")?.size, 0);
+});
+
+test("failed mount rolls back runtime, body lock and DOM", () => {
+  const popup = new Popup({ content: content() });
+  popup.view.createSkeleton = () => { throw new Error("mount failed"); };
   assert.throws(() => popup.showPopup(), /mount failed/);
-  assert.equal(popup.isOpen, false);
+  assert.equal(popup.lifecycle, "destroyed");
   assert.equal(popup.element, null);
-  assert.equal(activePopups.length, 0);
+  assert.equal(getPopupRuntime().stack.length, 0);
   assert.equal(dom.document.body.style.overflow, "");
-});
-
-test("setSmartPopup renders title and description as text", () => {
-  const popup = new Popup();
-  const content = popup.setSmartPopup({
-    title: "<img src=x onerror=alert(1)>",
-    description: "<script>alert(1)</script>",
-  });
-
-  assert.equal(content.querySelector(".fly-popup__confirm-title").textContent, "<img src=x onerror=alert(1)>");
-  assert.equal(content.querySelector(".fly-popup__confirm-description").textContent, "<script>alert(1)</script>");
-  assert.equal(content.innerHTML, "");
 });
