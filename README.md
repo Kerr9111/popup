@@ -175,6 +175,20 @@ Public generic variables:
 - `--popup-backdrop-opacity`;
 - `--popup-viewport-width`, `--popup-viewport-height`;
 - `--popup-viewport-offset-left`, `--popup-viewport-offset-top`.
+- `--popup-edge-gap-vertical` (default: `32px`);
+- `--popup-edge-gap-horizontal` (default: `12px`).
+
+Slide popups retain a permanent edge gap within the current viewport: vertical
+directions use `--popup-edge-gap-vertical`, while side directions use
+`--popup-edge-gap-horizontal`. The vertical gap is intentionally larger. Both
+values can be overridden in consumer CSS:
+
+```css
+.fly-popup {
+  --popup-edge-gap-vertical: 40px;
+  --popup-edge-gap-horizontal: 16px;
+}
+```
 
 ## Responsive
 

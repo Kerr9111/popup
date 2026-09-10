@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, test } from "node:test";
 import Popup, * as popupModule from "../src/index.js";
 import { getPopupRuntime } from "../src/PopupRuntime.js";
 import { FakeElement, event, installDom } from "./domHarness.js";
 
 let dom;
+const popupStyles = readFileSync(new URL("../styles/popup.scss", import.meta.url), "utf8");
+const compiledPopupCss = readFileSync(new URL("../styles/popup.css", import.meta.url), "utf8");
 
 beforeEach(() => {
   dom = installDom();
@@ -286,6 +289,33 @@ test("sizing and z-index options are exposed on the root", () => {
   assert.equal(popup.element.style.getPropertyValue("--popup-max-height"), "680px");
   assert.equal(popup.element.style.zIndex, "9000");
   assert.equal(popup.element.style.getPropertyValue("--popup-z-index"), "9000");
+});
+
+test("slide layouts retain configurable viewport edge gaps", () => {
+  assert.match(popupStyles, /--popup-edge-gap-vertical: 32px/);
+  assert.match(popupStyles, /--popup-edge-gap-horizontal: 12px/);
+  assert.match(
+    popupStyles,
+    /&--bottom-to-top\s*\{[\s\S]*?max-height: min\([\s\S]*?--popup-edge-gap-vertical/,
+  );
+  assert.match(
+    popupStyles,
+    /&--top-to-bottom\s*\{[\s\S]*?max-height: min\([\s\S]*?--popup-edge-gap-vertical/,
+  );
+  assert.match(
+    popupStyles,
+    /&--left-to-right\s*\{[\s\S]*?max-width: min\([\s\S]*?--popup-edge-gap-horizontal/,
+  );
+  assert.match(
+    popupStyles,
+    /&--right-to-left\s*\{[\s\S]*?max-width: min\([\s\S]*?--popup-edge-gap-horizontal/,
+  );
+  assert.match(popupStyles, /calc\(100% - var\(--popup-edge-gap-vertical\)\)/);
+  assert.match(popupStyles, /calc\(100% - var\(--popup-edge-gap-horizontal\)\)/);
+  assert.match(compiledPopupCss, /--popup-edge-gap-vertical: 32px/);
+  assert.match(compiledPopupCss, /--popup-edge-gap-horizontal: 12px/);
+  assert.match(compiledPopupCss, /calc\(100% - var\(--popup-edge-gap-vertical\)\)/);
+  assert.match(compiledPopupCss, /calc\(100% - var\(--popup-edge-gap-horizontal\)\)/);
 });
 
 test("stack has unique automatic z-index and supports closing A first", async () => {
